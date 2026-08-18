@@ -1,0 +1,21 @@
+# Cloudflare Workers Static Assets configuration for this Vite SPA.
+#
+# Deliberately minimal, per instruction: no Worker script, no "main" entry,
+# no server-side code. This ERP is (and stays) a purely client-side React
+# app talking directly to Supabase from the browser -- Cloudflare here is
+# only asked to serve the built `dist/` folder as static files, with
+# client-side routes (e.g. /orders/123) falling back to index.html so
+# React Router can handle them, exactly the same problem a direct file
+# link on Netlify solves with its own SPA redirect rule.
+#
+# This does NOT require Vite 6 or the Cloudflare Vite plugin -- that
+# integration path is for Workers that also run server-side/Worker code
+# alongside their frontend. A pure static-assets deployment (no `main`)
+# does not need it, confirmed against current Cloudflare Workers docs.
+
+name = "ai-merchandising-erp"
+compatibility_date = "2026-08-12"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
