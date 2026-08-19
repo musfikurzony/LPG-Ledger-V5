@@ -9,7 +9,7 @@
 # manifest.json, service-worker.js, css/, and js/ are served directly from
 # the repository root.
 
-name = "lpg-ledger"
+name = "lpg-ledger-v5"
 compatibility_date = "2026-08-18"
 
 [assets]
