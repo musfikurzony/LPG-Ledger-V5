@@ -252,7 +252,11 @@ function nextPurchaseId(){
 }
 function cylinderTotals(p){
   const cyls = p.cylinders || [];
-  return { kg: cyls.reduce(function(s,c){return s+c.kg;},0), cost: cyls.reduce(function(s,c){return s+c.cost;},0) };
+  return {
+    kg: cyls.reduce(function(s,c){return s+c.kg;},0),
+    cost: cyls.reduce(function(s,c){return s+c.cost;},0),
+    qty: cyls.reduce(function(s,c){return s+(c.qty||1);},0)
+  };
 }
 function billingPeriod(p, readings){
   const cylDates = (p.cylinders||[]).map(function(c){return c.date;}).filter(Boolean);
@@ -533,9 +537,10 @@ function normalizeData(){
   (DATA.purchases||[]).forEach(function(p){
     if(p.manualRate === undefined) p.manualRate = null;
     if(!p.cylinders){
-      p.cylinders = [{ id: uid('CYL'), date: p.date || new Date().toISOString().slice(0,10), kg: p.totalKg||0, cost: p.totalCost||0, hasPhoto:false }];
+      p.cylinders = [{ id: uid('CYL'), date: p.date || new Date().toISOString().slice(0,10), kg: p.totalKg||0, cost: p.totalCost||0, qty: 1, hasPhoto:false }];
       delete p.date; delete p.totalKg; delete p.totalCost;
     }
+    p.cylinders.forEach(function(c){ if(c.qty === undefined || c.qty === null || c.qty === '') c.qty = 1; });
   });
 }
 async function loadProfiles(){
@@ -595,7 +600,7 @@ function viewDashboard(){
     const period = billingPeriod(p, DATA.readings);
     html += '<div class="purchase-row" data-purchase="'+p.id+'">'
       + '<div class="pr-top"><strong>'+p.id+'</strong><span class="status '+p.status+'">'+p.status+'</span></div>'
-      + '<div class="pr-meta">'+(p.cylinders||[]).length+' cylinder(s) \u00b7 '+fmtQty(t.kg)+' kg \u00b7 Tk '+fmtTk(t.cost)+(period?' \u00b7 '+period.days+' days so far':'')+' \u00b7 '+DATA.readings.filter(function(r){return r.purchaseId===p.id;}).length+' readings logged</div>'
+      + '<div class="pr-meta">'+t.qty+' cylinder(s) \u00b7 '+fmtQty(t.kg)+' kg \u00b7 Tk '+fmtTk(t.cost)+(period?' \u00b7 '+period.days+' days so far':'')+' \u00b7 '+DATA.readings.filter(function(r){return r.purchaseId===p.id;}).length+' readings logged</div>'
       + '</div>';
     if(EXPANDED_PURCHASE === p.id) html += renderPurchaseDetail(p);
   });
@@ -616,13 +621,15 @@ function renderPurchaseDetail(p){
   }
 
   if(EDIT_PURCHASE_ID === p.id){
-    html += '<div class="inline-edit"><div class="hint" style="margin-bottom:8px;">Cylinder purchases in this batch \u2014 edit any of them or add more:</div>';
+    html += '<div class="inline-edit"><div class="hint" style="margin-bottom:8px;">Cylinder purchases in this batch \u2014 edit any of them or add more. KG/Cost are totals for that row\u2019s cylinders, not per-cylinder:</div>';
     EDIT_CYLINDERS.forEach(function(c){
-      html += '<div class="row3" style="margin-bottom:6px;">'
+      html += '<div class="row2" style="margin-bottom:6px;">'
         + '<div><label>Date</label><input type="date" class="cylDate" data-cyl="'+c.id+'" value="'+c.date+'"></div>'
-        + '<div><label>KG</label><input type="number" step="0.01" class="cylKg" data-cyl="'+c.id+'" value="'+c.kg+'"></div>'
-        + '<div><label>Cost (Tk)</label><input type="number" step="0.01" class="cylCost" data-cyl="'+c.id+'" value="'+c.cost+'"></div>'
-        + '</div><button class="btn danger small" data-del-cyl="'+c.id+'" style="margin-bottom:10px;">Remove this cylinder</button>';
+        + '<div><label>No. of cylinders</label><input type="number" step="1" min="1" class="cylQty" data-cyl="'+c.id+'" value="'+(c.qty||1)+'"></div>'
+        + '</div><div class="row2" style="margin-bottom:6px;">'
+        + '<div><label>Total KG</label><input type="number" step="0.01" class="cylKg" data-cyl="'+c.id+'" value="'+c.kg+'"></div>'
+        + '<div><label>Total cost (Tk)</label><input type="number" step="0.01" class="cylCost" data-cyl="'+c.id+'" value="'+c.cost+'"></div>'
+        + '</div><button class="btn danger small" data-del-cyl="'+c.id+'" style="margin-bottom:10px;">Remove this cylinder purchase</button>';
     });
     html += '<button class="btn secondary small" data-add-cyl="1">+ Add another cylinder purchase</button>'
       + '<label style="margin-top:14px;">Status</label><select id="epStatus"><option value="open" '+(p.status==='open'?'selected':'')+'>Open</option><option value="closed" '+(p.status==='closed'?'selected':'')+'>Closed</option></select>'
@@ -659,12 +666,12 @@ function renderPurchaseDetail(p){
     + '<div class="stat"><div class="v">'+b.rate.toFixed(3)+'</div><div class="l">kg / unit used</div></div>'
     + '</div>';
   const period = billingPeriod(p, DATA.readings);
-  html += '<div class="hint" style="margin-top:8px;">'+(p.cylinders||[]).length+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg total \u00b7 Tk '+fmtTk(b.totalCost)+' total'+(period?' \u00b7 billing period: '+period.days+' days ('+period.start+' to '+period.end+')':'')+'</div>';
+  html += '<div class="hint" style="margin-top:8px;">'+cylinderTotals(p).qty+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg total \u00b7 Tk '+fmtTk(b.totalCost)+' total'+(period?' \u00b7 billing period: '+period.days+' days ('+period.start+' to '+period.end+')':'')+'</div>';
 
   html += '<div class="hint" style="margin:14px 0 4px;">Cylinder purchases in this batch:</div>';
-  html += '<div class="tablewrap"><table><thead><tr><th>Date</th><th class="num">KG</th><th class="num">Cost (Tk)</th><th></th></tr></thead><tbody>';
+  html += '<div class="tablewrap"><table><thead><tr><th>Date</th><th class="num">Qty</th><th class="num">Total KG</th><th class="num">Total Cost (Tk)</th><th></th></tr></thead><tbody>';
   (p.cylinders||[]).slice().sort(function(a,c){return a.date.localeCompare(c.date);}).forEach(function(c){
-    html += '<tr><td>'+c.date+'</td><td class="num">'+fmtQty(c.kg)+'</td><td class="num">'+fmtTk(c.cost)+'</td>'
+    html += '<tr><td>'+c.date+'</td><td class="num">'+(c.qty||1)+'</td><td class="num">'+fmtQty(c.kg)+'</td><td class="num">'+fmtTk(c.cost)+'</td>'
       + '<td class="num">'+(c.hasPhoto ? '<button class="btn small secondary" data-view-cyl-photo="'+c.id+'">Receipt</button>' : '\u2014')+'</td></tr>';
   });
   html += '</tbody></table></div>';
@@ -731,23 +738,27 @@ function viewPurchaseForm(){
     const t = cylinderTotals(open);
     const period = billingPeriod(open, DATA.readings);
     html += '<h2>Add a cylinder purchase</h2><p class="sub">Adding to the currently open batch <b>'+open.id+'</b>. Log every cylinder as you buy it \u2014 they all bill together, blended by cost, once you close this batch.</p>';
-    html += '<div class="stat-grid"><div class="stat"><div class="v">'+(open.cylinders||[]).length+'</div><div class="l">Cylinders so far</div></div>'
+    html += '<div class="stat-grid"><div class="stat"><div class="v">'+t.qty+'</div><div class="l">Cylinders so far</div></div>'
       + '<div class="stat"><div class="v">'+fmtQty(t.kg)+' kg</div><div class="l">Total KG so far</div></div></div>';
     html += '<div class="hint" style="margin-top:8px;">Running cost: Tk '+fmtTk(t.cost)+(period?' \u00b7 cycle running '+period.days+' days so far':'')+'</div>';
     html += '<form id="cylForm" style="margin-top:16px;">'
       + '<label>Purchase date</label><input type="date" name="date" required value="'+new Date().toISOString().slice(0,10)+'">'
-      + '<div class="row2"><div><label>KG in this cylinder</label><input type="number" step="0.01" name="kg" required></div>'
-      + '<div><label>Cost (Tk)</label><input type="number" step="0.01" name="cost" required></div></div>'
+      + '<div class="row3"><div><label>No. of cylinders</label><input type="number" step="1" min="1" name="qty" value="1" required></div>'
+      + '<div><label>Total KG (all cylinders)</label><input type="number" step="0.01" name="kg" required></div>'
+      + '<div><label>Total cost (Tk)</label><input type="number" step="0.01" name="cost" required></div></div>'
+      + '<div class="hint">If you bought more than one cylinder at once, enter the combined KG and combined cost here \u2014 not per-cylinder.</div>'
       + '<label>Receipt photo (optional)</label><input type="file" accept="image/*" capture="environment" name="photo">'
-      + '<button class="btn" type="submit">Add cylinder to '+open.id+'</button></form>';
+      + '<button class="btn" type="submit">Add to '+open.id+'</button></form>';
     html += '<button class="btn secondary small" style="margin-top:18px;" data-close-batch="'+open.id+'">Close this batch & start a new cycle</button>'
       + '<div class="hint" style="margin-top:6px;">Close it once the last cylinder in this cycle runs out and meter readings are logged \u2014 typically 30\u201335 days. You can still add or fix cylinders afterward from Admin.</div>';
   } else {
-    html += '<h2>Start a new purchase cycle</h2><p class="sub">Log the first cylinder of a fresh billing cycle. You\u2019ll be able to add more cylinders to this same batch over the coming weeks as you buy them.</p>'
+    html += '<h2>Start a new purchase cycle</h2><p class="sub">Log the first purchase of a fresh billing cycle. You\u2019ll be able to add more cylinder purchases to this same batch over the coming weeks as you buy them.</p>'
       + '<form id="cylForm">'
       + '<label>Purchase date</label><input type="date" name="date" required value="'+new Date().toISOString().slice(0,10)+'">'
-      + '<div class="row2"><div><label>KG in this cylinder</label><input type="number" step="0.01" name="kg" required></div>'
-      + '<div><label>Cost (Tk)</label><input type="number" step="0.01" name="cost" required></div></div>'
+      + '<div class="row3"><div><label>No. of cylinders</label><input type="number" step="1" min="1" name="qty" value="1" required></div>'
+      + '<div><label>Total KG (all cylinders)</label><input type="number" step="0.01" name="kg" required></div>'
+      + '<div><label>Total cost (Tk)</label><input type="number" step="0.01" name="cost" required></div></div>'
+      + '<div class="hint">If you bought more than one cylinder at once, enter the combined KG and combined cost here \u2014 not per-cylinder.</div>'
       + '<label>Receipt photo (optional)</label><input type="file" accept="image/*" capture="environment" name="photo">'
       + '<button class="btn" type="submit">Start batch</button></form>';
   }
@@ -1000,11 +1011,12 @@ function bindMainEvents(){
   document.querySelectorAll('[data-cancel-edit-purchase]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); EDIT_PURCHASE_ID=null; EDIT_CYLINDERS=[]; renderMain(); }; });
   function captureCylinderEdits(){
     document.querySelectorAll('.cylDate').forEach(function(inp){ const c = EDIT_CYLINDERS.find(function(x){return x.id===inp.dataset.cyl;}); if(c) c.date = inp.value; });
+    document.querySelectorAll('.cylQty').forEach(function(inp){ const c = EDIT_CYLINDERS.find(function(x){return x.id===inp.dataset.cyl;}); if(c) c.qty = inp.value; });
     document.querySelectorAll('.cylKg').forEach(function(inp){ const c = EDIT_CYLINDERS.find(function(x){return x.id===inp.dataset.cyl;}); if(c) c.kg = inp.value; });
     document.querySelectorAll('.cylCost').forEach(function(inp){ const c = EDIT_CYLINDERS.find(function(x){return x.id===inp.dataset.cyl;}); if(c) c.cost = inp.value; });
   }
   document.querySelectorAll('[data-add-cyl]').forEach(function(b){
-    b.onclick = function(e){ e.stopPropagation(); captureCylinderEdits(); EDIT_CYLINDERS.push({ id: uid('CYL'), date: new Date().toISOString().slice(0,10), kg:'', cost:'' }); renderMain(); };
+    b.onclick = function(e){ e.stopPropagation(); captureCylinderEdits(); EDIT_CYLINDERS.push({ id: uid('CYL'), date: new Date().toISOString().slice(0,10), qty:1, kg:'', cost:'' }); renderMain(); };
   });
   document.querySelectorAll('[data-del-cyl]').forEach(function(b){
     b.onclick = function(e){ e.stopPropagation(); captureCylinderEdits(); EDIT_CYLINDERS = EDIT_CYLINDERS.filter(function(c){return c.id!==b.dataset.delCyl;}); renderMain(); };
@@ -1014,7 +1026,7 @@ function bindMainEvents(){
       e.stopPropagation();
       captureCylinderEdits();
       const p = DATA.purchases.find(function(x){return x.id===b.dataset.savePurchase;});
-      p.cylinders = EDIT_CYLINDERS.map(function(c){ return { id:c.id, date:c.date, kg:parseFloat(c.kg)||0, cost:parseFloat(c.cost)||0, hasPhoto: !!c.hasPhoto }; }).filter(function(c){ return c.kg>0 || c.cost>0; });
+      p.cylinders = EDIT_CYLINDERS.map(function(c){ return { id:c.id, date:c.date, qty: Math.max(1, parseInt(c.qty,10)||1), kg:parseFloat(c.kg)||0, cost:parseFloat(c.cost)||0, hasPhoto: !!c.hasPhoto }; }).filter(function(c){ return c.kg>0 || c.cost>0; });
       p.status = document.getElementById('epStatus').value;
       EDIT_PURCHASE_ID = null; EDIT_CYLINDERS = [];
       await saveStore('lpg-data', true, DATA);
@@ -1082,7 +1094,7 @@ function bindMainEvents(){
       await saveStore('photo:'+cylId, true, dataUrl);
       hasPhoto = true;
     }
-    const cyl = { id: cylId, date: fd.get('date'), kg: parseFloat(fd.get('kg')), cost: parseFloat(fd.get('cost')), hasPhoto: hasPhoto };
+    const cyl = { id: cylId, date: fd.get('date'), qty: Math.max(1, parseInt(fd.get('qty'),10)||1), kg: parseFloat(fd.get('kg')), cost: parseFloat(fd.get('cost')), hasPhoto: hasPhoto };
     let isNewBatch = false;
     if(!open){
       open = { id: nextPurchaseId(), status:'open', manualRate:null, cylinders: [] };
@@ -1302,7 +1314,7 @@ function printReport(purchaseId, method){
   y += 20;
 
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(85,85,85);
-  const metaLine = (period ? period.start+' to '+period.end+' ('+period.days+' days) \u00b7 ' : '')+(p.cylinders||[]).length+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg \u00b7 Tk '+fmtTk(b.totalCost)+' \u00b7 blended price/kg Tk '+fmtTk(b.pricePerKg);
+  const metaLine = (period ? period.start+' to '+period.end+' ('+period.days+' days) \u00b7 ' : '')+cylinderTotals(p).qty+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg \u00b7 Tk '+fmtTk(b.totalCost)+' \u00b7 blended price/kg Tk '+fmtTk(b.pricePerKg);
   doc.text(metaLine, margin, y);
   y += 16;
 
@@ -1323,10 +1335,9 @@ function printReport(purchaseId, method){
     head: [['Flat','Prev','Curr','Units','Bill (Tk)']],
     body: rows,
     foot: [['Total','','', fmtQty(b.totalUnits), fmtTk(b.totalBill)]],
-    styles: { font:'helvetica', fontSize: 9, textColor:[27,42,46] },
-    headStyles: { fillColor:[27,42,46], textColor:255 },
-    footStyles: { fillColor:[231,234,231], textColor:[27,42,46], fontStyle:'bold' },
-    columnStyles: { 1:{halign:'right'}, 2:{halign:'right'}, 3:{halign:'right'}, 4:{halign:'right'} }
+    styles: { font:'helvetica', fontSize: 9, textColor:[27,42,46], halign:'right' },
+    headStyles: { fillColor:[27,42,46], textColor:255, halign:'right' },
+    footStyles: { fillColor:[231,234,231], textColor:[27,42,46], fontStyle:'bold', halign:'right' }
   });
 
   let ry = (doc.lastAutoTable ? doc.lastAutoTable.finalY : y+200) + 22;
