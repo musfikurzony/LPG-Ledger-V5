@@ -1,21 +1,16 @@
-# Cloudflare Workers Static Assets configuration for this Vite SPA.
+# Cloudflare Workers Static Assets configuration for LPG Ledger.
 #
 # Deliberately minimal, per instruction: no Worker script, no "main" entry,
-# no server-side code. This ERP is (and stays) a purely client-side React
-# app talking directly to Supabase from the browser -- Cloudflare here is
-# only asked to serve the built `dist/` folder as static files, with
-# client-side routes (e.g. /orders/123) falling back to index.html so
-# React Router can handle them, exactly the same problem a direct file
-# link on Netlify solves with its own SPA redirect rule.
+# no server-side code. This is (and stays) a plain static HTML/CSS/JS PWA
+# talking directly to Supabase from the browser -- Cloudflare here is
+# only asked to serve the repo root as static files, exactly as-is.
 #
-# This does NOT require Vite 6 or the Cloudflare Vite plugin -- that
-# integration path is for Workers that also run server-side/Worker code
-# alongside their frontend. A pure static-assets deployment (no `main`)
-# does not need it, confirmed against current Cloudflare Workers docs.
+# There is no build step (no npm run build, no dist/ folder) -- index.html,
+# manifest.json, service-worker.js, css/, and js/ are served directly from
+# the repository root.
 
-name = "ai-merchandising-erp"
-compatibility_date = "2026-08-12"
+name = "lpg-ledger"
+compatibility_date = "2026-08-18"
 
 [assets]
-directory = "./dist"
-not_found_handling = "single-page-application"
+directory = "."
