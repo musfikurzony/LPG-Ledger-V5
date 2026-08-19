@@ -105,6 +105,7 @@
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:20px;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center;}
   .toast.show{opacity:1;}
   .locked{padding:40px 20px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
+  .offline-banner{background:var(--red-100);color:var(--red-800);font-size:12px;text-align:center;padding:7px 14px;display:none;align-items:center;justify-content:center;gap:6px;position:sticky;top:0;z-index:6;}
   .subcard{background:var(--paper);border:1px solid var(--line-soft);border-radius:10px;padding:12px;margin-bottom:10px;}
   .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .bignum{font-family:var(--mono);font-size:24px;font-weight:700;}
@@ -121,6 +122,7 @@
 </head>
 <body>
 <div id="app">
+  <div id="offlineBanner" class="offline-banner" style="display:none;"></div>
   <header class="top">
     <div class="brand">
       <h1>LPG <span>Ledger</span></h1>
@@ -150,12 +152,13 @@ async function loadStore(key, shared, fallback){
   try{
     if(key.indexOf('photo:')===0) return fallback; // photos are read via photoUrl(), not this path
     const { data, error } = await sb.from('app_state').select('data').eq('id','main').maybeSingle();
-    if(error || !data) return fallback;
-    return data.data;
-  }catch(e){ console.error('load failed', e); return fallback; }
+    if(error) throw error;
+    return data ? data.data : null; // null = confirmed empty on the server
+  }catch(e){ console.error('load failed', e); return undefined; } // undefined = could not reach the server
 }
 async function saveStore(key, shared, value){
   if(!sb){ toast('Not saved — Supabase is not connected yet'); return; }
+  if(!navigator.onLine){ toast("You're offline — this can't be saved until you're back online"); return; }
   try{
     if(key.indexOf('photo:')===0){
       await uploadPhoto(key.slice(6), value);
@@ -163,6 +166,7 @@ async function saveStore(key, shared, value){
     }
     const { error } = await sb.from('app_state').upsert({ id:'main', data:value, updated_at:new Date().toISOString() });
     if(error){ console.error('save failed', error); toast('Save failed — check Supabase setup'); }
+    else cacheDataLocally(value);
   }catch(e){ console.error('storage failed', e); toast('Save failed — check Supabase setup'); }
 }
 async function uploadPhoto(readingId, dataUrl){
@@ -184,6 +188,31 @@ function toast(msg){
   toast._h = setTimeout(()=>t.classList.remove('show'), 2600);
 }
 function uid(prefix){ return prefix + '-' + Math.random().toString(36).slice(2,8); }
+
+const OFFLINE_DATA_KEY = 'lpg_cache_data_v1';
+const OFFLINE_PROFILE_KEY = 'lpg_cache_profile_v1';
+let IS_OFFLINE = !navigator.onLine;
+let USING_CACHED_DATA = false;
+function cacheDataLocally(d){ try{ localStorage.setItem(OFFLINE_DATA_KEY, JSON.stringify(d)); }catch(e){} }
+function getCachedData(){ try{ const s = localStorage.getItem(OFFLINE_DATA_KEY); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
+function cacheProfileLocally(p){ try{ localStorage.setItem(OFFLINE_PROFILE_KEY, JSON.stringify(p)); }catch(e){} }
+function getCachedProfile(){ try{ const s = localStorage.getItem(OFFLINE_PROFILE_KEY); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
+function updateOfflineBanner(){
+  const b = document.getElementById('offlineBanner');
+  if(!b) return;
+  if(IS_OFFLINE){
+    b.style.display = 'flex';
+    b.innerHTML = '<i class="ti ti-wifi-off"></i> Offline \u2014 showing last synced data. Changes need internet to save.';
+  } else if(USING_CACHED_DATA){
+    b.style.display = 'flex';
+    b.innerHTML = '<i class="ti ti-refresh"></i> Showing cached data \u2014 reconnect to load the latest.';
+  } else {
+    b.style.display = 'none';
+    b.innerHTML = '';
+  }
+}
+window.addEventListener('online', function(){ IS_OFFLINE=false; updateOfflineBanner(); if(AUTH_STATUS==='ready'||AUTH_STATUS==='offline') checkSession(); });
+window.addEventListener('offline', function(){ IS_OFFLINE=true; updateOfflineBanner(); });
 
 function seedFlats(){
   const out = [];
@@ -374,6 +403,7 @@ function renderMain(){
   if(AUTH_STATUS === 'nobackend'){ m.innerHTML = '<div class="card"><div class="empty">Supabase is not connected yet \u2014 add your project URL &amp; key in the code.</div></div>'; return; }
   if(AUTH_STATUS === 'signedout'){ m.innerHTML = viewAuth(); bindAuthEvents(); return; }
   if(AUTH_STATUS === 'pending'){ m.innerHTML = viewPending(); bindAuthEvents(); return; }
+  if(AUTH_STATUS === 'offline'){ m.innerHTML = viewOfflineNoCache(); return; }
   if(TAB==='dashboard') m.innerHTML = viewDashboard();
   else if(TAB==='purchase') m.innerHTML = viewPurchaseForm();
   else if(TAB==='reading') m.innerHTML = viewReadingForm();
@@ -381,7 +411,7 @@ function renderMain(){
   else if(TAB==='admin') m.innerHTML = viewAdmin();
   bindMainEvents();
 }
-function renderAll(){ renderShell(); renderMain(); }
+function renderAll(){ renderShell(); renderMain(); updateOfflineBanner(); }
 
 function viewAuth(){
   const signup = AUTH_MODE === 'signup';
@@ -395,6 +425,10 @@ function viewAuth(){
     + '</form>'
     + '<p class="hint" style="margin-top:14px;text-align:center;">'+(signup?'Already have an account? ':"Don't have access yet? ")+'<a id="authToggle">'+(signup?'Sign in':'Request access')+'</a></p>'
     + '<div id="authMsg" class="hint" style="margin-top:8px;text-align:center;"></div></div>';
+}
+function viewOfflineNoCache(){
+  return '<div class="card authcard" style="text-align:center;"><h2>You\u2019re offline</h2>'
+    + '<p class="sub">No previously loaded data is saved on this device yet. Connect to the internet at least once so the app can load and cache your account.</p></div>';
 }
 function viewPending(){
   return '<div class="card authcard" style="text-align:center;"><h2>Waiting for approval</h2>'
@@ -430,33 +464,79 @@ function bindAuthEvents(){
   if(so) so.onclick = async function(){ await sb.auth.signOut(); AUTH_STATUS='signedout'; CURRENT_USER=null; renderAll(); };
 }
 async function checkSession(){
-  const { data } = await sb.auth.getSession();
-  const session = data && data.session;
-  if(!session){ AUTH_STATUS='signedout'; renderAll(); return; }
-  let profRes = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
-  let profile = profRes.data;
-  if(!profile){
-    const name = (session.user.user_metadata && session.user.user_metadata.name) || session.user.email;
-    const ins = await sb.from('profiles').insert({ id:session.user.id, name:name, email:session.user.email }).select().maybeSingle();
-    profile = ins.data;
+  let session = null;
+  try{
+    const { data } = await sb.auth.getSession();
+    session = data && data.session;
+  }catch(e){ console.error('getSession failed', e); }
+
+  if(!session){
+    const cachedProfile = getCachedProfile();
+    if(cachedProfile && IS_OFFLINE){
+      CURRENT_USER = cachedProfile; AUTH_STATUS='ready'; USING_CACHED_DATA = true;
+      DATA = getCachedData() || { purchases: [], readings: [], flats: seedFlats(), settings:{ abnormalThresholdPct: 25 } };
+      normalizeData();
+      if(CURRENT_USER.role === 'resident' && CURRENT_USER.flat_id) HISTORY_FLAT = CURRENT_USER.flat_id;
+      renderAll();
+      return;
+    }
+    AUTH_STATUS='signedout'; renderAll(); return;
   }
-  if(!profile || profile.role === 'pending'){ AUTH_STATUS='pending'; renderAll(); return; }
+
+  let profile = null; let profileFetchFailed = false;
+  try{
+    let profRes = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+    profile = profRes.data;
+    if(!profile){
+      const name = (session.user.user_metadata && session.user.user_metadata.name) || session.user.email;
+      const ins = await sb.from('profiles').insert({ id:session.user.id, name:name, email:session.user.email }).select().maybeSingle();
+      profile = ins.data;
+    }
+  }catch(e){ console.error('profile fetch failed', e); profileFetchFailed = true; }
+
+  if(profile) cacheProfileLocally({ id: profile.id, name: profile.name, email: profile.email, role: profile.role, flat_id: profile.flat_id||null });
+
+  if(!profile || profile.role === 'pending'){
+    if(profileFetchFailed){
+      const cachedProfile = getCachedProfile();
+      if(cachedProfile && cachedProfile.role !== 'pending'){ profile = cachedProfile; USING_CACHED_DATA = true; }
+      else { AUTH_STATUS = 'offline'; renderAll(); return; }
+    } else {
+      AUTH_STATUS='pending'; renderAll(); return;
+    }
+  }
+
   CURRENT_USER = { id: profile.id, name: profile.name, email: profile.email, role: profile.role, flat_id: profile.flat_id || null };
   AUTH_STATUS = 'ready';
-  DATA = await loadStore('lpg-data', true, null);
-  if(!DATA){ DATA = { purchases: [], readings: [], flats: seedFlats(), settings:{ abnormalThresholdPct: 25 } }; await saveStore('lpg-data', true, DATA); }
+
+  const loaded = await loadStore('lpg-data', true, undefined);
+  if(loaded === undefined){
+    const cached = getCachedData();
+    DATA = cached || { purchases: [], readings: [], flats: seedFlats(), settings:{ abnormalThresholdPct: 25 } };
+    USING_CACHED_DATA = true;
+  } else if(loaded === null){
+    DATA = { purchases: [], readings: [], flats: seedFlats(), settings:{ abnormalThresholdPct: 25 } };
+    await saveStore('lpg-data', true, DATA);
+  } else {
+    DATA = loaded;
+    cacheDataLocally(DATA);
+    USING_CACHED_DATA = false;
+  }
+  normalizeData();
+  if(CURRENT_USER.role === 'resident' && CURRENT_USER.flat_id) HISTORY_FLAT = CURRENT_USER.flat_id;
+  renderAll();
+}
+function normalizeData(){
   if(!DATA.flats || DATA.flats.length===0) DATA.flats = seedFlats();
   if(!DATA.settings) DATA.settings = { abnormalThresholdPct: 25 };
   if(DATA.settings.abnormalThresholdPct === undefined) DATA.settings.abnormalThresholdPct = 25;
-  DATA.purchases.forEach(function(p){
+  (DATA.purchases||[]).forEach(function(p){
     if(p.manualRate === undefined) p.manualRate = null;
     if(!p.cylinders){
       p.cylinders = [{ id: uid('CYL'), date: p.date || new Date().toISOString().slice(0,10), kg: p.totalKg||0, cost: p.totalCost||0, hasPhoto:false }];
       delete p.date; delete p.totalKg; delete p.totalCost;
     }
   });
-  if(CURRENT_USER.role === 'resident' && CURRENT_USER.flat_id) HISTORY_FLAT = CURRENT_USER.flat_id;
-  renderAll();
 }
 async function loadProfiles(){
   if(!sb) return;
@@ -638,7 +718,7 @@ function renderPurchaseDetail(p){
     html += '<div class="method-note">Set a manual conversion rate on this batch (via the Manual toggle above) to see the leakage/recovery comparison here.</div>';
   }
 
-  html += '<button class="btn secondary small" style="margin-top:12px;" data-print="'+p.id+'">Print / save PDF ('+ (method==='actual'?'Actual':'Manual') +')</button>';
+  html += '<button class="btn secondary small" style="margin-top:12px;" data-print="'+p.id+'">Download PDF ('+ (method==='actual'?'Actual':'Manual') +')</button>';
   html += '</div>';
   return html;
 }
@@ -1182,32 +1262,85 @@ function waLink(readingId, purchaseId, method){
   return 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
 }
 
+const OFFICE_ADDRESS = 'House 147, Road 2, Block A, Pallabi, Mirpur 12, Dhaka';
+
+function addAddressFooter(doc){
+  const pageCount = doc.internal.getNumberOfPages();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  for(let i=1;i<=pageCount;i++){
+    doc.setPage(i);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.setTextColor(150,150,150);
+    doc.text(OFFICE_ADDRESS, pageWidth-40, pageHeight-24, { align: 'right' });
+  }
+}
+
+function cycleFilename(purchaseId){
+  const m = /^P-(\d+)/.exec(purchaseId||'');
+  const num = m ? m[1] : (purchaseId||'report').replace(/[^A-Za-z0-9]/g,'');
+  return 'LPG_Billing_Report_Cycle_'+num+'.pdf';
+}
+
 function printReport(purchaseId, method){
   const p = DATA.purchases.find(function(x){return x.id===purchaseId;});
   const b = computeBilling(p, DATA.readings, method);
   const period = billingPeriod(p, DATA.readings);
   const methodLabel = method==='manual' ? ('Manual conversion rate: '+b.rate.toFixed(2)+' kg per meter unit (set by admin)') : ('Actual conversion ratio: '+b.rate.toFixed(3)+' kg per meter unit (calculated automatically from this batch)');
-  const w = window.open('', '_blank');
-  w.document.write('<html><head><title>'+p.id+' report</title><style>'
-    + 'body{font-family:sans-serif;padding:30px;color:#1B2A2E;} h1{font-size:18px;margin-bottom:2px;} .m{color:#555;font-size:12px;margin-bottom:6px;} .mm{background:#F3E2D2;color:#7A3D0F;padding:8px 12px;border-radius:8px;font-size:12.5px;margin-bottom:16px;display:inline-block;}'
-    + 'table{width:100%;border-collapse:collapse;font-size:12px;} th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:right;} th:first-child,td:first-child{text-align:left;} tfoot td{font-weight:bold;border-top:2px solid #333;}'
-    + '</style></head><body>'
-    + '<h1>LPG Ledger \u2014 '+p.id+'</h1>'
-    + '<div class="m">'+(period ? period.start+' to '+period.end+' ('+period.days+' days) \u00b7 ' : '')+(p.cylinders||[]).length+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg \u00b7 Tk '+fmtTk(b.totalCost)+' \u00b7 blended price/kg Tk '+fmtTk(b.pricePerKg)+'</div>'
-    + '<div class="mm">Billing method: '+methodLabel+'</div>'
-    + '<table><thead><tr><th>Flat</th><th>Prev</th><th>Curr</th><th>Units</th><th>Bill (Tk)</th></tr></thead><tbody>'
-    + b.rows.sort(function(a,c){return naturalFlatCompare(a.flatId,c.flatId);}).map(function(r){return '<tr><td>'+r.flatId+'</td><td>'+fmtQty(r.previous)+'</td><td>'+fmtQty(r.current)+'</td><td>'+fmtQty(r.units)+'</td><td>'+fmtTk(r.bill)+'</td></tr>';}).join('')
-    + '</tbody><tfoot><tr><td colspan="3">Total</td><td>'+fmtQty(b.totalUnits)+'</td><td>'+fmtTk(b.totalBill)+'</td></tr></tfoot></table>'
-    + (function(){
-        const rec = computeReconciliation(p, DATA.readings);
-        let s = '<div class="m" style="margin-top:16px;"><b>Reconciliation</b> \u2014 Actual: '+rec.actual.reconciliationPct.toFixed(1)+'% (purchased vs. calculated-from-metered, expected near 100% by design)';
-        if(rec.manual) s += ' \u00b7 Manual: '+rec.manual.recoveryPct.toFixed(1)+'% recovered, '+fmtQty(rec.manual.diffKg)+' kg / Tk '+fmtTk(rec.manual.varianceTk)+' unaccounted';
-        s += '</div>';
-        return s;
-      })()
-    + '</body></html>');
-  w.document.close();
-  setTimeout(function(){w.print();}, 300);
+  const rec = computeReconciliation(p, DATA.readings);
+
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  if(!jsPDFCtor){ toast('PDF library failed to load \u2014 check your connection and try again'); return; }
+  const doc = new jsPDFCtor({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 40;
+  let y = 50;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(27,42,46);
+  doc.text('LPG Ledger \u2014 '+p.id, margin, y);
+  y += 20;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(85,85,85);
+  const metaLine = (period ? period.start+' to '+period.end+' ('+period.days+' days) \u00b7 ' : '')+(p.cylinders||[]).length+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg \u00b7 Tk '+fmtTk(b.totalCost)+' \u00b7 blended price/kg Tk '+fmtTk(b.pricePerKg);
+  doc.text(metaLine, margin, y);
+  y += 16;
+
+  const methodLines = doc.splitTextToSize('Billing method: '+methodLabel, pageWidth-2*margin-16);
+  doc.setFillColor(243,226,210);
+  doc.roundedRect(margin, y-10, pageWidth-2*margin, methodLines.length*12+12, 4, 4, 'F');
+  doc.setTextColor(122,61,15);
+  doc.text(methodLines, margin+8, y+2);
+  y += methodLines.length*12+22;
+
+  const rows = b.rows.slice().sort(function(a,c){return naturalFlatCompare(a.flatId,c.flatId);}).map(function(r){
+    return [r.flatId, fmtQty(r.previous), fmtQty(r.current), fmtQty(r.units), fmtTk(r.bill)];
+  });
+
+  doc.autoTable({
+    startY: y,
+    margin: { left: margin, right: margin },
+    head: [['Flat','Prev','Curr','Units','Bill (Tk)']],
+    body: rows,
+    foot: [['Total','','', fmtQty(b.totalUnits), fmtTk(b.totalBill)]],
+    styles: { font:'helvetica', fontSize: 9, textColor:[27,42,46] },
+    headStyles: { fillColor:[27,42,46], textColor:255 },
+    footStyles: { fillColor:[231,234,231], textColor:[27,42,46], fontStyle:'bold' },
+    columnStyles: { 1:{halign:'right'}, 2:{halign:'right'}, 3:{halign:'right'}, 4:{halign:'right'} }
+  });
+
+  let ry = (doc.lastAutoTable ? doc.lastAutoTable.finalY : y+200) + 22;
+  if(ry > doc.internal.pageSize.getHeight() - 90){ doc.addPage(); ry = 50; }
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(27,42,46);
+  doc.text('Reconciliation', margin, ry); ry += 14;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(85,85,85);
+  let recLine = 'Actual: '+rec.actual.reconciliationPct.toFixed(1)+'% (purchased vs. calculated-from-metered, expected near 100% by design)';
+  if(rec.manual) recLine += ' \u00b7 Manual: '+rec.manual.recoveryPct.toFixed(1)+'% recovered, '+fmtQty(rec.manual.diffKg)+' kg / Tk '+fmtTk(rec.manual.varianceTk)+' unaccounted';
+  const recLines = doc.splitTextToSize(recLine, pageWidth-2*margin);
+  doc.text(recLines, margin, ry);
+
+  addAddressFooter(doc);
+  doc.save(cycleFilename(p.id));
 }
 
 async function boot(){
@@ -1223,5 +1356,7 @@ if('serviceWorker' in navigator){
 }
 </script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 </body>
 </html>
