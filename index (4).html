@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LPG Ledger</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1B2A2E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LPG Ledger">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --ink:#1B2A2E; --ink-soft:#4B5A5D; --line:#D9DDD9; --line-soft:#E7EAE7;
+    --paper:#F5F6F5; --card:#FFFFFF;
+    --flame:#C4661F; --flame-100:#F3E2D2; --flame-800:#7A3D0F;
+    --teal:#0F6E56; --teal-100:#DCEEE8; --teal-800:#084234;
+    --red:#A32D2D; --red-100:#F7DEDE; --red-800:#5C1919;
+    --mono: 'SFMono-Regular', ui-monospace, 'Menlo', 'Consolas', monospace;
+    --sans: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;}
+  #app{max-width:860px;margin:0 auto;padding:0 0 60px;}
+  header.top{position:sticky;top:0;z-index:5;background:var(--paper);border-bottom:1px solid var(--line);padding:16px 18px 12px;}
+  .brand{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .brand h1{font-size:19px;font-weight:600;margin:0;letter-spacing:-0.01em;}
+  .brand h1 span{color:var(--flame);}
+  .who{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);}
+  .authcard{max-width:380px;margin:40px auto;}
+  .authcard a{cursor:pointer;text-decoration:underline;color:var(--teal);}
+  .roletag{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:var(--teal-100);color:var(--teal-800);}
+  nav.tabs{display:flex;gap:4px;margin-top:14px;overflow-x:auto;padding-bottom:2px;}
+  nav.tabs button{white-space:nowrap;font-family:var(--sans);font-size:13px;font-weight:500;padding:8px 13px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--ink-soft);cursor:pointer;}
+  nav.tabs button.active{background:var(--card);border-color:var(--line);color:var(--ink);}
+  nav.tabs button:hover:not(.active){color:var(--ink);}
+  main{padding:20px 18px;}
+  .card{background:var(--card);border:1px solid var(--line-soft);border-radius:14px;padding:18px;margin-bottom:14px;}
+  .card h2{font-size:15px;font-weight:600;margin:0 0 3px;}
+  .card .sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 14px;}
+  .empty{padding:34px 16px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
+  label{display:block;font-size:12.5px;font-weight:500;color:var(--ink-soft);margin:12px 0 5px;}
+  label:first-child{margin-top:0;}
+  input,select,textarea{width:100%;font-family:var(--sans);font-size:14.5px;padding:9px 11px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink);}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:-1px;}
+  input[type=file]{padding:8px;font-size:13px;}
+  input[type=checkbox]{width:auto;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .hint{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+  .btn{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:13.5px;font-weight:500;padding:10px 16px;border-radius:9px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;margin-top:16px;}
+  .btn:hover{opacity:.9;}
+  .btn.secondary{background:transparent;color:var(--ink);border-color:var(--line);}
+  .btn.danger{background:var(--red);border-color:var(--red);}
+  .btn.small{padding:6px 10px;font-size:12px;margin-top:0;}
+  .btn:disabled{opacity:.35;cursor:not-allowed;}
+  .purchase-row{border:1px solid var(--line-soft);border-radius:11px;padding:13px 15px;margin-bottom:10px;cursor:pointer;}
+  .purchase-row:hover{border-color:var(--line);}
+  .purchase-row .pr-top{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+  .purchase-row .pr-top strong{font-size:14px;font-family:var(--mono);}
+  .status{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:5px;}
+  .status.open{background:var(--flame-100);color:var(--flame-800);}
+  .status.closed{background:var(--teal-100);color:var(--teal-800);}
+  .pr-meta{font-size:12px;color:var(--ink-soft);margin-top:4px;font-family:var(--mono);}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;}
+  th{text-align:left;font-weight:500;color:var(--ink-soft);font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid var(--line);}
+  td{padding:8px 8px;border-bottom:1px solid var(--line-soft);font-family:var(--mono);font-size:12.5px;}
+  td.flat{font-family:var(--sans);font-weight:500;font-size:13px;}
+  tfoot td{font-weight:600;border-top:2px solid var(--line);border-bottom:none;}
+  .num{text-align:right;}
+  .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:12px;}
+  .stat-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;}
+  .stat{background:var(--paper);border-radius:9px;padding:10px 12px;}
+  .stat .v{font-family:var(--mono);font-size:16px;font-weight:600;}
+  .stat .l{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin-top:2px;}
+  .toggle-group{display:flex;gap:6px;margin-top:12px;}
+  .toggle-group button{flex:1;font-family:var(--sans);font-size:13px;font-weight:500;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft);cursor:pointer;}
+  .toggle-group button.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .method-note{margin-top:10px;padding:10px 12px;border-radius:9px;background:var(--flame-100);color:var(--flame-800);font-size:12.5px;}
+  .batch-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--teal-100);color:var(--teal-800);border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:13px;}
+  .batch-banner b{font-family:var(--mono);}
+  .batch-banner a{color:var(--teal-800);font-size:12px;text-decoration:underline;cursor:pointer;}
+  .flat-history{border:1px solid var(--line-soft);border-radius:11px;padding:12px 14px;margin-bottom:9px;display:flex;gap:12px;align-items:flex-start;}
+  .flat-history img{width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;cursor:pointer;}
+  .flat-history .ph-none{width:56px;height:56px;border-radius:8px;background:var(--line-soft);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-soft);text-align:center;}
+  .flat-history .fh-body{flex:1;font-size:12.5px;}
+  .flat-history .fh-body b{font-size:13.5px;}
+  .flat-history .fh-meta{color:var(--ink-soft);font-family:var(--mono);font-size:11.5px;margin-top:2px;}
+  .user-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);}
+  .user-row:last-child{border-bottom:none;}
+  .user-row .ui{flex:1;min-width:0;}
+  .user-row .ui b{font-size:13.5px;display:block;}
+  .user-row .ui span{font-size:11.5px;color:var(--ink-soft);}
+  .user-row select{width:auto;font-size:12px;padding:5px 8px;}
+  .flatrow{display:grid;grid-template-columns:56px 1fr 1fr 90px 60px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line-soft);}
+  .flatrow input{padding:6px 8px;font-size:12.5px;}
+  .flatrow .fid{font-family:var(--mono);font-weight:600;font-size:13px;}
+  .flatrow.inactive{opacity:.45;}
+  .pill{display:inline-block;font-size:10.5px;padding:3px 8px;border-radius:20px;cursor:pointer;text-align:center;font-family:var(--sans);}
+  .pill.active{background:var(--teal-100);color:var(--teal-800);}
+  .pill.inactive{background:var(--line-soft);color:var(--ink-soft);}
+  .modal-bg{position:fixed;inset:0;background:rgba(20,25,25,.7);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20;}
+  .modal-bg img{max-width:100%;max-height:80vh;border-radius:10px;}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:20px;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center;}
+  .toast.show{opacity:1;}
+  .locked{padding:40px 20px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
+  .offline-banner{background:var(--red-100);color:var(--red-800);font-size:12px;text-align:center;padding:7px 14px;display:none;align-items:center;justify-content:center;gap:6px;position:sticky;top:0;z-index:6;}
+  .subcard{background:var(--paper);border:1px solid var(--line-soft);border-radius:10px;padding:12px;margin-bottom:10px;}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .bignum{font-family:var(--mono);font-size:24px;font-weight:700;}
+  .bignum-l{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin-top:2px;}
+  .chart-legend{font-size:11px;color:var(--ink-soft);margin-top:6px;line-height:1.6;}
+  .warn-box{margin-top:10px;padding:10px 12px;border-radius:9px;background:var(--red-100);color:var(--red-800);font-size:12.5px;}
+  .range-toggle{display:flex;gap:6px;margin:10px 0;}
+  .range-toggle button{font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);cursor:pointer;}
+  .range-toggle button.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .inline-edit{background:var(--paper);border:1px dashed var(--line);border-radius:10px;padding:12px;margin-top:10px;}
+  .rowbtns{display:flex;gap:6px;margin-top:0;}
+  @media(max-width:480px){ .row2,.row3{grid-template-columns:1fr;} .stat-grid,.stat-grid-3{grid-template-columns:1fr 1fr;} .flatrow{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="offlineBanner" class="offline-banner" style="display:none;"></div>
+  <header class="top">
+    <div class="brand">
+      <h1>LPG <span>Ledger</span></h1>
+      <div class="who">
+        <span class="roletag" id="roleTag">ADMIN</span>
+        <button id="logoutBtn" class="btn secondary small" style="margin-top:0;display:none;">Log out</button>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+  </header>
+  <main id="main"></main>
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+// ====== Supabase config — paste your own project's values here ======
+const SUPABASE_URL = 'https://bqqyclfhzayogxaqzpgb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxcXljbGZoemF5b2d4YXF6cGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0NzM4MDAsImV4cCI6MjEwMDA0OTgwMH0.SUx-uKM3OloQcbMQdPv6AXap2ZcT2n_h27eKhur9rZA';
+let sb = null;
+if(SUPABASE_URL.indexOf('PASTE_')!==0 && window.supabase){
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+async function loadStore(key, shared, fallback){
+  if(!sb) return fallback;
+  try{
+    if(key.indexOf('photo:')===0) return fallback; // photos are read via photoUrl(), not this path
+    const { data, error } = await sb.from('app_state').select('data').eq('id','main').maybeSingle();
+    if(error) throw error;
+    return data ? data.data : null; // null = confirmed empty on the server
+  }catch(e){ console.error('load failed', e); return undefined; } // undefined = could not reach the server
+}
+async function saveStore(key, shared, value){
+  if(!sb){ toast('Not saved — Supabase is not connected yet'); return; }
+  if(!navigator.onLine){ toast("You're offline — this can't be saved until you're back online"); return; }
+  try{
+    if(key.indexOf('photo:')===0){
+      await uploadPhoto(key.slice(6), value);
+      return;
+    }
+    const { error } = await sb.from('app_state').upsert({ id:'main', data:value, updated_at:new Date().toISOString() });
+    if(error){ console.error('save failed', error); toast('Save failed — check Supabase setup'); }
+    else cacheDataLocally(value);
+  }catch(e){ console.error('storage failed', e); toast('Save failed — check Supabase setup'); }
+}
+async function uploadPhoto(readingId, dataUrl){
+  if(!sb) return;
+  try{
+    const blob = await (await fetch(dataUrl)).blob();
+    await sb.storage.from('meter-photos').upload(readingId+'.jpg', blob, { upsert:true, contentType:'image/jpeg' });
+  }catch(e){ console.error('photo upload failed', e); }
+}
+function photoUrl(readingId){
+  if(!sb) return null;
+  const { data } = sb.storage.from('meter-photos').getPublicUrl(readingId+'.jpg');
+  return data ? data.publicUrl : null;
+}
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._h);
+  toast._h = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+function uid(prefix){ return prefix + '-' + Math.random().toString(36).slice(2,8); }
+
+const OFFLINE_DATA_KEY = 'lpg_cache_data_v1';
+const OFFLINE_PROFILE_KEY = 'lpg_cache_profile_v1';
+let IS_OFFLINE = !navigator.onLine;
+let USING_CACHED_DATA = false;
+function cacheDataLocally(d){ try{ localStorage.setItem(OFFLINE_DATA_KEY, JSON.stringify(d)); }catch(e){} }
+function getCachedData(){ try{ const s = localStorage.getItem(OFFLINE_DATA_KEY); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
+function cacheProfileLocally(p){ try{ localStorage.setItem(OFFLINE_PROFILE_KEY, JSON.stringify(p)); }catch(e){} }
+function getCachedProfile(){ try{ const s = localStorage.getItem(OFFLINE_PROFILE_KEY); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
+function updateOfflineBanner(){
+  const b = document.getElementById('offlineBanner');
+  if(!b) return;
+  if(IS_OFFLINE){
+    b.style.display = 'flex';
+    b.innerHTML = '<i class="ti ti-wifi-off"></i> Offline \u2014 showing last synced data. Changes need internet to save.';
+  } else if(USING_CACHED_DATA){
+    b.style.display = 'flex';
+    b.innerHTML = '<i class="ti ti-refresh"></i> Showing cached data \u2014 reconnect to load the latest.';
+  } else {
+    b.style.display = 'none';
+    b.innerHTML = '';
+  }
+}
+window.addEventListener('online', function(){ IS_OFFLINE=false; updateOfflineBanner(); if(AUTH_STATUS==='ready'||AUTH_STATUS==='offline') checkSession(); });
+window.addEventListener('offline', function(){ IS_OFFLINE=true; updateOfflineBanner(); });
+
+function seedFlats(){
+  const out = [];
+  for(let floor=1; floor<=11; floor++){
+    for(const w of ['A','B','C']) out.push({ id: floor+w, name:'', phone:'', active:true });
+  }
+  return out;
+}
+
+let DATA = { purchases: [], readings: [], users: [], flats: [] };
+let CURRENT_USER = null;
+let TAB = 'dashboard';
+let EXPANDED_PURCHASE = null;
+let REPORT_METHOD = {};
+let HISTORY_FLAT = null;
+let ACTIVE_BATCH_ID = null;
+let SHOW_BATCH_SWITCH = false;
+let EDIT_PURCHASE_ID = null;
+let EDIT_CYLINDERS = [];
+let EDIT_READING_ID = null;
+let SET_RATE_FOR = null;
+let GRAPH_RANGE = '6'; // 6 | 12 | all
+
+let AUTH_STATUS = 'checking'; // checking | nobackend | signedout | pending | ready
+let AUTH_MODE = 'login'; // login | signup
+let PROFILES = [];
+
+const ROLE_LABEL = { admin:'Admin', purchase_manager:'Purchase manager', meter_reader:'Meter reader', resident:'Resident' };
+
+function nextPurchaseId(){
+  let max = 0;
+  DATA.purchases.forEach(function(p){
+    const m = /^P-(\d+)/.exec(p.id);
+    if(m) max = Math.max(max, parseInt(m[1],10));
+  });
+  return 'P-' + String(max+1).padStart(3,'0');
+}
+function cylinderTotals(p){
+  const cyls = p.cylinders || [];
+  return {
+    kg: cyls.reduce(function(s,c){return s+c.kg;},0),
+    cost: cyls.reduce(function(s,c){return s+c.cost;},0),
+    qty: cyls.reduce(function(s,c){return s+(c.qty||1);},0)
+  };
+}
+function billingPeriod(p, readings){
+  const cylDates = (p.cylinders||[]).map(function(c){return c.date;}).filter(Boolean);
+  if(cylDates.length===0) return null;
+  const start = cylDates.slice().sort()[0];
+  const readingDates = readings.filter(function(r){return r.purchaseId===p.id;}).map(function(r){return r.dateLogged;});
+  const end = (readingDates.length ? readingDates : cylDates).slice().sort().slice(-1)[0];
+  const days = Math.max(0, Math.round((new Date(end) - new Date(start)) / 86400000));
+  return { start: start, end: end, days: days };
+}
+
+function computeBilling(purchase, readings, method){
+  const totals = cylinderTotals(purchase);
+  const rows = readings.filter(r => r.purchaseId === purchase.id).map(r => Object.assign({}, r, { units: r.current - r.previous }));
+  const totalUnits = rows.reduce((s,r)=>s+r.units, 0);
+  const pricePerKg = totals.kg > 0 ? totals.cost / totals.kg : 0;
+  const conversionRatio = totalUnits > 0 ? totals.kg / totalUnits : 0;
+  const rate = method === 'manual' ? (purchase.manualRate || 0) : conversionRatio;
+  rows.forEach(r=>{ r.bill = r.units * rate * pricePerKg; });
+  const totalBill = rows.reduce((s,r)=>s+r.bill,0);
+  return { rows: rows, totalUnits: totalUnits, pricePerKg: pricePerKg, conversionRatio: conversionRatio, rate: rate, totalBill: totalBill, totalKg: totals.kg, totalCost: totals.cost };
+}
+function fmtTk(n){ return (isFinite(n)?n:0).toLocaleString('en-BD', {maximumFractionDigits:2}); }
+function fmtQty(n){ return (isFinite(n)?n:0).toLocaleString('en-BD', {maximumFractionDigits:2}); }
+function flatById(id){ return DATA.flats.find(function(f){ return f.id===id; }); }
+function flatSortKey(id){
+  const m = /^(\d+)([A-Za-z]*)$/.exec(id||'');
+  return m ? [parseInt(m[1],10), m[2]] : [999999, id||''];
+}
+function naturalFlatCompare(idA, idB){
+  const ka = flatSortKey(idA), kb = flatSortKey(idB);
+  if(ka[0]!==kb[0]) return ka[0]-kb[0];
+  return ka[1].localeCompare(kb[1]);
+}
+function sortedFlats(){ return DATA.flats.slice().sort(function(a,b){ return naturalFlatCompare(a.id,b.id); }); }
+
+// ---- Flat-dashboard / cycle / reconciliation helpers (additive, reuse computeBilling) ----
+function batchSeq(id){ const m = /^P-(\d+)/.exec(id); return m ? parseInt(m[1],10) : 0; }
+function shortDate(d){
+  if(!d) return '';
+  const parts = d.split('-');
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return parts[2]+' '+months[parseInt(parts[1],10)-1];
+}
+function cycleLabel(period, index, full){
+  const n = String(index+1).padStart(2,'0');
+  if(!period) return 'Cycle '+n;
+  return 'Cycle '+n+' \u2014 '+(full? period.start+' to '+period.end : shortDate(period.start)+'\u2013'+shortDate(period.end));
+}
+function cycleShortRange(period){ return period ? shortDate(period.start)+'\u2013'+shortDate(period.end) : ''; }
+function flatCycles(flatId, method){
+  const cycles = [];
+  DATA.purchases.forEach(function(p){
+    const b = computeBilling(p, DATA.readings, method||'actual');
+    const row = b.rows.find(function(r){return r.flatId===flatId;});
+    if(!row) return;
+    cycles.push({
+      purchaseId: p.id, seq: batchSeq(p.id), period: billingPeriod(p, DATA.readings),
+      previous: row.previous, current: row.current, units: row.units,
+      kg: row.units * b.rate, rate: b.rate, pricePerKg: b.pricePerKg, bill: row.bill
+    });
+  });
+  cycles.sort(function(a,b){ return a.seq - b.seq; });
+  return cycles;
+}
+function avg(arr){ return arr.length ? arr.reduce(function(s,v){return s+v;},0)/arr.length : 0; }
+function computeReconciliation(p, readings){
+  const totals = cylinderTotals(p);
+  const actual = computeBilling(p, readings, 'actual');
+  const manualSet = p.manualRate != null && p.manualRate !== '' && p.manualRate > 0;
+  const result = {
+    purchasedKg: totals.kg, totalUnits: actual.totalUnits,
+    actual: {
+      conversionRatio: actual.conversionRatio,
+      calculatedKg: actual.totalUnits * actual.conversionRatio,
+      reconciliationPct: totals.kg>0 ? (actual.totalUnits*actual.conversionRatio/totals.kg*100) : 0
+    },
+    manual: null
+  };
+  if(manualSet){
+    const impliedKg = actual.totalUnits * p.manualRate;
+    const diffKg = totals.kg - impliedKg;
+    result.manual = { rate: p.manualRate, impliedKg: impliedKg, diffKg: diffKg,
+      recoveryPct: totals.kg>0 ? (impliedKg/totals.kg*100) : 0, varianceTk: diffKg * actual.pricePerKg };
+  }
+  return result;
+}
+function barChart(values, shortLabels, colorVar){
+  const w = 320, h = 150, pad = 26;
+  const max = Math.max.apply(null, values.concat([0.01]));
+  const gap = (w - pad*2) / Math.max(values.length,1);
+  const barW = Math.min(gap*0.6, 34);
+  let bars = '';
+  values.forEach(function(v,i){
+    const bh = max>0 ? (v/max) * (h - pad*2 - 14) : 0;
+    const x = pad + i*gap + (gap-barW)/2;
+    const y = h - pad - bh;
+    bars += '<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW.toFixed(1)+'" height="'+bh.toFixed(1)+'" rx="3" fill="'+colorVar+'"></rect>';
+    bars += '<text x="'+(x+barW/2).toFixed(1)+'" y="'+(y-4).toFixed(1)+'" font-size="9" text-anchor="middle" fill="var(--ink-soft)">'+fmtQty(v)+'</text>';
+    bars += '<text x="'+(x+barW/2).toFixed(1)+'" y="'+(h-8)+'" font-size="8.5" text-anchor="middle" fill="var(--ink-soft)">'+(shortLabels[i]||'')+'</text>';
+  });
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:150px;" preserveAspectRatio="xMidYMid meet">'+bars+'<line x1="'+pad+'" y1="'+(h-pad)+'" x2="'+(w-pad)+'" y2="'+(h-pad)+'" stroke="var(--line)"></line></svg>';
+}
+
+function can(action){
+  const role = CURRENT_USER ? CURRENT_USER.role : null;
+  if(role === 'admin') return true;
+  if(action === 'addPurchase') return role === 'purchase_manager';
+  if(action === 'addReading') return role === 'meter_reader';
+  return false;
+}
+
+const TABS = [
+  { id:'dashboard', label:'Dashboard', roles:['admin','purchase_manager','meter_reader','resident'] },
+  { id:'purchase', label:'New purchase', roles:['admin','purchase_manager'] },
+  { id:'reading', label:'Log reading', roles:['admin','meter_reader'] },
+  { id:'history', label:'Flat Dashboard', roles:['admin','purchase_manager','meter_reader','resident'] },
+  { id:'admin', label:'Admin', roles:['admin'] },
+];
+
+function renderShell(){
+  const roleTag = document.getElementById('roleTag');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const tabsEl = document.getElementById('tabs');
+  if(AUTH_STATUS !== 'ready'){
+    roleTag.style.display = 'none';
+    logoutBtn.style.display = 'none';
+    tabsEl.innerHTML = '';
+    return;
+  }
+  roleTag.style.display = '';
+  logoutBtn.style.display = '';
+  roleTag.textContent = ROLE_LABEL[CURRENT_USER.role].toUpperCase();
+  logoutBtn.onclick = async function(){ await sb.auth.signOut(); AUTH_STATUS='signedout'; CURRENT_USER=null; renderAll(); };
+  const visibleTabs = TABS.filter(function(t){ return t.roles.includes(CURRENT_USER.role); });
+  if(!visibleTabs.find(function(t){return t.id===TAB;})) TAB = 'dashboard';
+  tabsEl.innerHTML = visibleTabs.map(function(t){
+    return '<button data-tab="'+t.id+'" class="'+(TAB===t.id?'active':'')+'">'+t.label+'</button>';
+  }).join('');
+  document.querySelectorAll('#tabs button').forEach(function(b){
+    b.onclick = function(){ TAB = b.dataset.tab; renderAll(); if(TAB==='admin') loadProfiles(); };
+  });
+}
+
+function renderMain(){
+  const m = document.getElementById('main');
+  if(AUTH_STATUS === 'checking'){ m.innerHTML = '<div class="card"><div class="empty">Loading\u2026</div></div>'; return; }
+  if(AUTH_STATUS === 'nobackend'){ m.innerHTML = '<div class="card"><div class="empty">Supabase is not connected yet \u2014 add your project URL &amp; key in the code.</div></div>'; return; }
+  if(AUTH_STATUS === 'signedout'){ m.innerHTML = viewAuth(); bindAuthEvents(); return; }
+  if(AUTH_STATUS === 'pending'){ m.innerHTML = viewPending(); bindAuthEvents(); return; }
+  if(AUTH_STATUS === 'offline'){ m.innerHTML = viewOfflineNoCache(); return; }
+  if(TAB==='dashboard') m.innerHTML = viewDashboard();
+  else if(TAB==='purchase') m.innerHTML = viewPurchaseForm();
+  else if(TAB==='reading') m.innerHTML = viewReadingForm();
+  else if(TAB==='history') m.innerHTML = viewHistory();
+  else if(TAB==='admin') m.innerHTML = viewAdmin();
+  bindMainEvents();
+}
+function renderAll(){ renderShell(); renderMain(); updateOfflineBanner(); }
+
+function viewAuth(){
+  const signup = AUTH_MODE === 'signup';
+  return '<div class="card authcard"><h2>'+(signup?'Request access':'Sign in')+'</h2>'
+    + '<p class="sub">'+(signup?'Create an account, then an admin approves it and assigns your role before you can use anything.':'Sign in to LPG Ledger.')+'</p>'
+    + '<form id="authForm">'
+    + (signup ? '<label>Your name</label><input type="text" name="name" required>' : '')
+    + '<label>Email</label><input type="email" name="email" required>'
+    + '<label>Password</label><input type="password" name="password" required minlength="6">'
+    + '<button class="btn" type="submit" style="width:100%;justify-content:center;">'+(signup?'Create account':'Sign in')+'</button>'
+    + '</form>'
+    + '<p class="hint" style="margin-top:14px;text-align:center;">'+(signup?'Already have an account? ':"Don't have access yet? ")+'<a id="authToggle">'+(signup?'Sign in':'Request access')+'</a></p>'
+    + '<div id="authMsg" class="hint" style="margin-top:8px;text-align:center;"></div></div>';
+}
+function viewOfflineNoCache(){
+  return '<div class="card authcard" style="text-align:center;"><h2>You\u2019re offline</h2>'
+    + '<p class="sub">No previously loaded data is saved on this device yet. Connect to the internet at least once so the app can load and cache your account.</p></div>';
+}
+function viewPending(){
+  return '<div class="card authcard" style="text-align:center;"><h2>Waiting for approval</h2>'
+    + '<p class="sub">Your account is created. An admin needs to approve it and assign your role before you can use the app.</p>'
+    + '<button class="btn secondary" id="signOutBtn">Sign out</button></div>';
+}
+function bindAuthEvents(){
+  const t = document.getElementById('authToggle');
+  if(t) t.onclick = function(){ AUTH_MODE = AUTH_MODE==='signup' ? 'login' : 'signup'; renderMain(); };
+  const f = document.getElementById('authForm');
+  if(f) f.onsubmit = async function(e){
+    e.preventDefault();
+    const fd = new FormData(f);
+    const email = fd.get('email'), password = fd.get('password');
+    const msg = document.getElementById('authMsg');
+    msg.textContent = 'Please wait\u2026';
+    try{
+      if(AUTH_MODE==='signup'){
+        const name = fd.get('name');
+        const res = await sb.auth.signUp({ email:email, password:password, options:{ data:{ name:name } } });
+        if(res.error){ msg.textContent = res.error.message; return; }
+        if(res.data.user && !res.data.session){ msg.textContent = 'Check your email to confirm, then sign in.'; AUTH_MODE='login'; renderMain(); return; }
+        if(res.data.user){ await sb.from('profiles').insert({ id:res.data.user.id, name:name, email:email }); }
+        await checkSession();
+      } else {
+        const res = await sb.auth.signInWithPassword({ email:email, password:password });
+        if(res.error){ msg.textContent = res.error.message; return; }
+        await checkSession();
+      }
+    }catch(err){ msg.textContent = 'Something went wrong. Try again.'; }
+  };
+  const so = document.getElementById('signOutBtn');
+  if(so) so.onclick = async function(){ await sb.auth.signOut(); AUTH_STATUS='signedout'; CURRENT_USER=null; renderAll(); };
+}
+async function checkSession(){
+  let session = null;
+  try{
+    const { data } = await sb.auth.getSession();
+    session = data && data.session;
+  }catch(e){ console.error('getSession failed', e); }
+
+  if(!session){
+    const cachedProfile = getCachedProfile();
+    if(cachedProfile && IS_OFFLINE){
+      CURRENT_USER = cachedProfile; AUTH_STATUS='ready'; USING_CACHED_DATA = true;
+      DATA = getCachedData() || { purchases: [], readings: [], flats: seedFlats(), settings:{ abnormalThresholdPct: 25 } };
+      normalizeData();
+      if(CURRENT_USER.role === 'resident' && CURRENT_USER.flat_id) HISTORY_FLAT = CURRENT_USER.flat_id;
+      renderAll();
+      return;
+    }
+    AUTH_STATUS='signedout'; renderAll(); return;
+  }
+
+  let profile = null; let profileFetchFailed = false;
+  try{
+    let profRes = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+    profile = profRes.data;
+    if(!profile){
+      const name = (session.user.user_metadata && session.user.user_metadata.name) || session.user.email;
+      const ins = await sb.from('profiles').insert({ id:session.user.id, name:name, email:session.user.email }).select().maybeSingle();
+      profile = ins.data;
+    }
+  }catch(e){ console.error('profile fetch failed', e); profileFetchFailed = true; }
+
+  if(profile) cacheProfileLocally({ id: profile.id, name: profile.name, email: profile.email, role: profile.role, flat_id: profile.flat_id||null });
+
+  if(!profile || profile.role === 'pending'){
+    if(profileFetchFailed){
+      const cachedProfile = getCachedProfile();
+      if(cachedProfile && cachedProfile.role !== 'pending'){ profile = cachedProfile; USING_CACHED_DATA = true; }
+      else { AUTH_STATUS = 'offline'; renderAll(); return; }
+    } else {
+      AUTH_STATUS='pending'; renderAll(); return;
+    }
+  }
+
+  CURRENT_USER = { id: profile.id, name: profile.name, email: profile.email, role: profile.role, flat_id: profile.flat_id || null };
+  AUTH_STATUS = 'ready';
+
+  const loaded = await loadStore('lpg-data', true, undefined);
+  if(loaded === undefined){
+    const cached = getCachedData();
+    DATA = cached || { purchases: [], readings: [], flats: seedFlats(), settings:{ abnormalThresholdPct: 25 } };
+    USING_CACHED_DATA = true;
+  } else if(loaded === null){
+    DATA = { purchases: [], readings: [], flats: seedFlats(), settings:{ abnormalThresholdPct: 25 } };
+    await saveStore('lpg-data', true, DATA);
+  } else {
+    DATA = loaded;
+    cacheDataLocally(DATA);
+    USING_CACHED_DATA = false;
+  }
+  normalizeData();
+  if(CURRENT_USER.role === 'resident' && CURRENT_USER.flat_id) HISTORY_FLAT = CURRENT_USER.flat_id;
+  renderAll();
+}
+function normalizeData(){
+  if(!DATA.flats || DATA.flats.length===0) DATA.flats = seedFlats();
+  if(!DATA.settings) DATA.settings = { abnormalThresholdPct: 25 };
+  if(DATA.settings.abnormalThresholdPct === undefined) DATA.settings.abnormalThresholdPct = 25;
+  (DATA.purchases||[]).forEach(function(p){
+    if(p.manualRate === undefined) p.manualRate = null;
+    if(!p.cylinders){
+      p.cylinders = [{ id: uid('CYL'), date: p.date || new Date().toISOString().slice(0,10), kg: p.totalKg||0, cost: p.totalCost||0, qty: 1, hasPhoto:false }];
+      delete p.date; delete p.totalKg; delete p.totalCost;
+    }
+    p.cylinders.forEach(function(c){ if(c.qty === undefined || c.qty === null || c.qty === '') c.qty = 1; });
+  });
+}
+async function loadProfiles(){
+  if(!sb) return;
+  const res = await sb.from('profiles').select('*').order('created_at', { ascending:true });
+  PROFILES = res.data || [];
+  if(TAB==='admin') renderMain();
+}
+
+function buildingOverview(){
+  const sortedAll = DATA.purchases.slice().sort(function(a,b){ return batchSeq(a.id)-batchSeq(b.id); });
+  if(sortedAll.length===0) return '';
+  const current = sortedAll[sortedAll.length-1];
+  const t = cylinderTotals(current);
+  const b = computeBilling(current, DATA.readings, REPORT_METHOD[current.id]||'actual');
+  const activeFlats = DATA.flats.filter(function(f){return f.active;});
+  const flatsWithReadings = b.rows.length;
+  const flatsPending = Math.max(0, activeFlats.length - flatsWithReadings);
+  const consumedKg = b.rows.reduce(function(s,r){return s+r.units*b.rate;},0);
+  const avgPerFlat = flatsWithReadings>0 ? consumedKg/flatsWithReadings : 0;
+
+  let html = '<div class="card"><h2>Building overview</h2><p class="sub">Current cycle: '+current.id+(current.status==='open'?' (still open)':'')+'</p>';
+  html += '<div class="stat-grid-3">'
+    + '<div class="stat"><div class="v">'+fmtQty(t.kg)+' kg</div><div class="l">Purchased</div></div>'
+    + '<div class="stat"><div class="v">'+fmtQty(consumedKg)+' kg</div><div class="l">Consumed</div></div>'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(b.totalBill)+'</div><div class="l">Total billed</div></div>'
+    + '<div class="stat"><div class="v">'+flatsWithReadings+' / '+activeFlats.length+'</div><div class="l">Flats read</div></div>'
+    + '<div class="stat"><div class="v">'+flatsPending+'</div><div class="l">Pending</div></div>'
+    + '<div class="stat"><div class="v">'+fmtQty(avgPerFlat)+' kg</div><div class="l">Avg / flat</div></div>'
+    + '</div>';
+
+  const chartCycles = sortedAll.slice(-8);
+  if(chartCycles.length>1){
+    const values = chartCycles.map(function(p){ const bb = computeBilling(p, DATA.readings, 'actual'); return bb.rows.reduce(function(s,r){return s+r.units*bb.rate;},0); });
+    const labels = chartCycles.map(function(p){ return 'C'+(sortedAll.indexOf(p)+1); });
+    html += '<div class="hint" style="margin-top:12px;">Building-wide consumption by cycle (actual method):</div>';
+    html += barChart(values, labels, 'var(--teal)');
+    html += '<div class="chart-legend">'+chartCycles.map(function(p){ const period=billingPeriod(p,DATA.readings); return 'C'+(sortedAll.indexOf(p)+1)+' = '+p.id+(period?' ('+period.start+' to '+period.end+')':''); }).join(' \u00b7 ')+'</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function viewDashboard(){
+  if(DATA.purchases.length === 0){
+    return '<div class="card"><div class="empty">No gas purchases logged yet. '+(can('addPurchase') ? 'Start with "New purchase."' : 'Ask your purchase manager to log the first batch.')+'</div></div>';
+  }
+  const sorted = DATA.purchases.slice().sort(function(a,b){
+    const na = parseInt((/^P-(\d+)/.exec(a.id)||[0,'0'])[1],10);
+    const nb = parseInt((/^P-(\d+)/.exec(b.id)||[0,'0'])[1],10);
+    return nb-na;
+  });
+  let html = buildingOverview();
+  html += '<div class="card"><h2>Purchases</h2><p class="sub">Tap a batch to see every flat\u2019s bill and how it was calculated.</p>';
+  sorted.forEach(function(p){
+    const t = cylinderTotals(p);
+    const period = billingPeriod(p, DATA.readings);
+    html += '<div class="purchase-row" data-purchase="'+p.id+'">'
+      + '<div class="pr-top"><strong>'+p.id+'</strong><span class="status '+p.status+'">'+p.status+'</span></div>'
+      + '<div class="pr-meta">'+t.qty+' cylinder(s) \u00b7 '+fmtQty(t.kg)+' kg \u00b7 Tk '+fmtTk(t.cost)+(period?' \u00b7 '+period.days+' days so far':'')+' \u00b7 '+DATA.readings.filter(function(r){return r.purchaseId===p.id;}).length+' readings logged</div>'
+      + '</div>';
+    if(EXPANDED_PURCHASE === p.id) html += renderPurchaseDetail(p);
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderPurchaseDetail(p){
+  const method = REPORT_METHOD[p.id] || 'actual';
+  const b = computeBilling(p, DATA.readings, method);
+  const isAdmin = CURRENT_USER.role === 'admin';
+  const manualSet = p.manualRate != null && p.manualRate !== '';
+
+  let html = '<div class="card" style="background:var(--paper);border-style:dashed;">';
+
+  if(isAdmin){
+    html += '<button class="btn secondary small" data-edit-purchase="'+p.id+'">Edit batch</button>';
+  }
+
+  if(EDIT_PURCHASE_ID === p.id){
+    html += '<div class="inline-edit"><div class="hint" style="margin-bottom:8px;">Cylinder purchases in this batch \u2014 edit any of them or add more. KG/Cost are totals for that row\u2019s cylinders, not per-cylinder:</div>';
+    EDIT_CYLINDERS.forEach(function(c){
+      html += '<div class="row2" style="margin-bottom:6px;">'
+        + '<div><label>Date</label><input type="date" class="cylDate" data-cyl="'+c.id+'" value="'+c.date+'"></div>'
+        + '<div><label>No. of cylinders</label><input type="number" step="1" min="1" class="cylQty" data-cyl="'+c.id+'" value="'+(c.qty||1)+'"></div>'
+        + '</div><div class="row2" style="margin-bottom:6px;">'
+        + '<div><label>Total KG</label><input type="number" step="0.01" class="cylKg" data-cyl="'+c.id+'" value="'+c.kg+'"></div>'
+        + '<div><label>Total cost (Tk)</label><input type="number" step="0.01" class="cylCost" data-cyl="'+c.id+'" value="'+c.cost+'"></div>'
+        + '</div><button class="btn danger small" data-del-cyl="'+c.id+'" style="margin-bottom:10px;">Remove this cylinder purchase</button>';
+    });
+    html += '<button class="btn secondary small" data-add-cyl="1">+ Add another cylinder purchase</button>'
+      + '<label style="margin-top:14px;">Status</label><select id="epStatus"><option value="open" '+(p.status==='open'?'selected':'')+'>Open</option><option value="closed" '+(p.status==='closed'?'selected':'')+'>Closed</option></select>'
+      + '<div class="rowbtns" style="margin-top:12px;"><button class="btn small" data-save-purchase="'+p.id+'">Save</button><button class="btn secondary small" data-cancel-edit-purchase="1">Cancel</button></div>'
+      + '</div>';
+  }
+
+  html += '<div class="toggle-group">'
+    + '<button data-method="actual" data-purchase="'+p.id+'" class="'+(method==='actual'?'on':'')+'">Actual</button>'
+    + '<button data-method="manual" data-purchase="'+p.id+'" class="'+(method==='manual'?'on':'')+'">Manual'+(manualSet?'':' (not set)')+'</button>'
+    + '</div>';
+
+  if(method === 'manual'){
+    if(!manualSet && !isAdmin){
+      html += '<div class="method-note">No manual conversion rate has been set for this batch yet. Ask an admin to set one.</div></div>';
+      return html;
+    }
+    if(isAdmin && SET_RATE_FOR === p.id){
+      html += '<div class="inline-edit"><label>Manual conversion rate (kg per meter unit)</label>'
+        + '<input type="number" step="0.01" id="manualRateInput" value="'+(p.manualRate||'')+'" placeholder="e.g. 2.60">'
+        + '<div class="rowbtns" style="margin-top:12px;"><button class="btn small" data-save-rate="'+p.id+'">Save rate</button><button class="btn secondary small" data-cancel-rate="1">Cancel</button></div></div>';
+    } else {
+      html += '<div class="method-note">Manual method \u2014 fixed conversion rate: <b>'+(manualSet?p.manualRate:'not set')+' kg/unit</b>'
+        + (isAdmin ? ' <a data-edit-rate="'+p.id+'" style="cursor:pointer;text-decoration:underline;">'+(manualSet?'edit':'set now')+'</a>' : '')
+        + '. This stays fixed until an admin updates it, so bills can be revised on request.</div>';
+    }
+    if(!manualSet){ html += '</div>'; return html; }
+  } else {
+    html += '<div class="method-note">Actual method \u2014 conversion ratio calculated automatically from this batch: <b>'+b.conversionRatio.toFixed(3)+' kg/unit</b>. This spreads any line leakage fairly across every flat based on their real metered share.</div>';
+  }
+
+  html += '<div class="stat-grid">'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(b.pricePerKg)+'</div><div class="l">Price / kg (blended)</div></div>'
+    + '<div class="stat"><div class="v">'+b.rate.toFixed(3)+'</div><div class="l">kg / unit used</div></div>'
+    + '</div>';
+  const period = billingPeriod(p, DATA.readings);
+  html += '<div class="hint" style="margin-top:8px;">'+cylinderTotals(p).qty+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg total \u00b7 Tk '+fmtTk(b.totalCost)+' total'+(period?' \u00b7 billing period: '+period.days+' days ('+period.start+' to '+period.end+')':'')+'</div>';
+
+  html += '<div class="hint" style="margin:14px 0 4px;">Cylinder purchases in this batch:</div>';
+  html += '<div class="tablewrap"><table><thead><tr><th>Date</th><th class="num">Qty</th><th class="num">Total KG</th><th class="num">Total Cost (Tk)</th><th></th></tr></thead><tbody>';
+  (p.cylinders||[]).slice().sort(function(a,c){return a.date.localeCompare(c.date);}).forEach(function(c){
+    html += '<tr><td>'+c.date+'</td><td class="num">'+(c.qty||1)+'</td><td class="num">'+fmtQty(c.kg)+'</td><td class="num">'+fmtTk(c.cost)+'</td>'
+      + '<td class="num">'+(c.hasPhoto ? '<button class="btn small secondary" data-view-cyl-photo="'+c.id+'">Receipt</button>' : '\u2014')+'</td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  html += '<div class="tablewrap"><table><thead><tr><th>Flat</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">Bill (Tk)</th><th></th></tr></thead><tbody>';
+  b.rows.sort(function(a,c){return naturalFlatCompare(a.flatId,c.flatId);}).forEach(function(r){
+    const f = flatById(r.flatId);
+    const phone = f && f.phone;
+    html += '<tr><td class="flat">'+r.flatId+(f&&f.name?' <span style="color:var(--ink-soft);font-weight:400;">'+f.name+'</span>':'')+'</td>'
+      + '<td class="num">'+fmtQty(r.previous)+'</td><td class="num">'+fmtQty(r.current)+'</td><td class="num">'+fmtQty(r.units)+'</td><td class="num">'+fmtTk(r.bill)+'</td>'
+      + '<td class="num">';
+    if(phone) html += '<button class="btn small secondary" data-wa="'+r.id+'" data-purchase="'+p.id+'">WA</button> ';
+    if(isAdmin) html += '<button class="btn small secondary" data-edit-reading="'+r.id+'">Edit</button>';
+    html += '</td></tr>';
+    if(EDIT_READING_ID === r.id){
+      html += '<tr><td colspan="6"><div class="inline-edit">'
+        + '<div class="row3"><div><label>Flat</label><select id="erFlat">'+sortedFlats().map(function(fl){return '<option value="'+fl.id+'" '+(fl.id===r.flatId?'selected':'')+'>'+fl.id+'</option>';}).join('')+'</select></div>'
+        + '<div><label>Previous</label><input type="number" step="0.01" id="erPrev" value="'+r.previous+'"></div>'
+        + '<div><label>Current</label><input type="number" step="0.01" id="erCurr" value="'+r.current+'"></div></div>'
+        + '<label>Purchase batch</label><select id="erBatch">'+DATA.purchases.map(function(pp){return '<option value="'+pp.id+'" '+(pp.id===r.purchaseId?'selected':'')+'>'+pp.id+'</option>';}).join('')+'</select>'
+        + '<div class="hint">Moving this reading to a different batch fixes a mis-logged entry.</div>'
+        + '<div class="rowbtns" style="margin-top:12px;"><button class="btn small" data-save-reading="'+r.id+'">Save</button><button class="btn secondary small" data-cancel-edit-reading="1">Cancel</button><button class="btn danger small" data-delete-reading="'+r.id+'">Delete</button></div>'
+        + '</div></td></tr>';
+    }
+  });
+  html += '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">'+fmtQty(b.totalUnits)+'</td><td class="num">'+fmtTk(b.totalBill)+'</td><td></td></tr></tfoot></table></div>';
+
+  const rec = computeReconciliation(p, DATA.readings);
+  html += '<div class="hint" style="margin:16px 0 6px;">Purchase vs. consumption reconciliation:</div>';
+  html += '<div class="subcard"><b style="font-size:13px;">Actual method</b>'
+    + '<div class="hint" style="margin:4px 0 8px;">This ratio is derived FROM the purchased KG and metered units, so it will always land close to 100% \u2014 that\u2019s expected by construction, not proof there\u2019s no leakage.</div>'
+    + '<div class="tablewrap"><table style="margin-top:0;"><tbody>'
+    + '<tr><td>Purchased KG</td><td class="num">'+fmtQty(rec.purchasedKg)+'</td></tr>'
+    + '<tr><td>Total metered units</td><td class="num">'+fmtQty(rec.totalUnits)+'</td></tr>'
+    + '<tr><td>Actual KG conversion</td><td class="num">'+rec.actual.conversionRatio.toFixed(3)+' kg/unit</td></tr>'
+    + '<tr><td>Calculated KG consumed</td><td class="num">'+fmtQty(rec.actual.calculatedKg)+'</td></tr>'
+    + '<tr><td>Reconciliation</td><td class="num">'+rec.actual.reconciliationPct.toFixed(1)+'%</td></tr>'
+    + '</tbody></table></div></div>';
+  if(rec.manual){
+    html += '<div class="subcard"><b style="font-size:13px;">Manual method</b>'
+      + '<div class="hint" style="margin:4px 0 8px;">This compares purchased gas against what the fixed manual rate implies was consumed \u2014 the meaningful number for spotting leakage or unrecovered cost.</div>'
+      + '<div class="tablewrap"><table style="margin-top:0;"><tbody>'
+      + '<tr><td>Purchased KG</td><td class="num">'+fmtQty(rec.purchasedKg)+'</td></tr>'
+      + '<tr><td>Manual conversion rate</td><td class="num">'+rec.manual.rate+' kg/unit</td></tr>'
+      + '<tr><td>Implied KG consumed</td><td class="num">'+fmtQty(rec.manual.impliedKg)+'</td></tr>'
+      + '<tr><td>Difference / unaccounted KG</td><td class="num">'+fmtQty(rec.manual.diffKg)+'</td></tr>'
+      + '<tr><td>Recovery</td><td class="num">'+rec.manual.recoveryPct.toFixed(1)+'%</td></tr>'
+      + '<tr><td>Variance</td><td class="num">Tk '+fmtTk(rec.manual.varianceTk)+'</td></tr>'
+      + '</tbody></table></div></div>';
+  } else {
+    html += '<div class="method-note">Set a manual conversion rate on this batch (via the Manual toggle above) to see the leakage/recovery comparison here.</div>';
+  }
+
+  html += '<button class="btn secondary small" style="margin-top:12px;" data-print="'+p.id+'">Download PDF ('+ (method==='actual'?'Actual':'Manual') +')</button>';
+  html += '</div>';
+  return html;
+}
+
+function viewPurchaseForm(){
+  if(!can('addPurchase')) return '<div class="card"><div class="locked">Only the purchase manager or admin can log a gas purchase.</div></div>';
+  const open = DATA.purchases.find(function(p){return p.status==='open';});
+  let html = '<div class="card">';
+  if(open){
+    const t = cylinderTotals(open);
+    const period = billingPeriod(open, DATA.readings);
+    html += '<h2>Add a cylinder purchase</h2><p class="sub">Adding to the currently open batch <b>'+open.id+'</b>. Log every cylinder as you buy it \u2014 they all bill together, blended by cost, once you close this batch.</p>';
+    html += '<div class="stat-grid"><div class="stat"><div class="v">'+t.qty+'</div><div class="l">Cylinders so far</div></div>'
+      + '<div class="stat"><div class="v">'+fmtQty(t.kg)+' kg</div><div class="l">Total KG so far</div></div></div>';
+    html += '<div class="hint" style="margin-top:8px;">Running cost: Tk '+fmtTk(t.cost)+(period?' \u00b7 cycle running '+period.days+' days so far':'')+'</div>';
+    html += '<form id="cylForm" style="margin-top:16px;">'
+      + '<label>Purchase date</label><input type="date" name="date" required value="'+new Date().toISOString().slice(0,10)+'">'
+      + '<div class="row3"><div><label>No. of cylinders</label><input type="number" step="1" min="1" name="qty" value="1" required></div>'
+      + '<div><label>Total KG (all cylinders)</label><input type="number" step="0.01" name="kg" required></div>'
+      + '<div><label>Total cost (Tk)</label><input type="number" step="0.01" name="cost" required></div></div>'
+      + '<div class="hint">If you bought more than one cylinder at once, enter the combined KG and combined cost here \u2014 not per-cylinder.</div>'
+      + '<label>Receipt photo (optional)</label><input type="file" accept="image/*" capture="environment" name="photo">'
+      + '<button class="btn" type="submit">Add to '+open.id+'</button></form>';
+    html += '<button class="btn secondary small" style="margin-top:18px;" data-close-batch="'+open.id+'">Close this batch & start a new cycle</button>'
+      + '<div class="hint" style="margin-top:6px;">Close it once the last cylinder in this cycle runs out and meter readings are logged \u2014 typically 30\u201335 days. You can still add or fix cylinders afterward from Admin.</div>';
+  } else {
+    html += '<h2>Start a new purchase cycle</h2><p class="sub">Log the first purchase of a fresh billing cycle. You\u2019ll be able to add more cylinder purchases to this same batch over the coming weeks as you buy them.</p>'
+      + '<form id="cylForm">'
+      + '<label>Purchase date</label><input type="date" name="date" required value="'+new Date().toISOString().slice(0,10)+'">'
+      + '<div class="row3"><div><label>No. of cylinders</label><input type="number" step="1" min="1" name="qty" value="1" required></div>'
+      + '<div><label>Total KG (all cylinders)</label><input type="number" step="0.01" name="kg" required></div>'
+      + '<div><label>Total cost (Tk)</label><input type="number" step="0.01" name="cost" required></div></div>'
+      + '<div class="hint">If you bought more than one cylinder at once, enter the combined KG and combined cost here \u2014 not per-cylinder.</div>'
+      + '<label>Receipt photo (optional)</label><input type="file" accept="image/*" capture="environment" name="photo">'
+      + '<button class="btn" type="submit">Start batch</button></form>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function viewReadingForm(){
+  if(!can('addReading')) return '<div class="card"><div class="locked">Only the meter reader or admin can log meter readings.</div></div>';
+  const openPurchases = DATA.purchases.filter(function(p){return p.status==='open';});
+  if(openPurchases.length===0) return '<div class="card"><div class="empty">No open purchase batch. Ask the purchase manager to open one first.</div></div>';
+  if(!ACTIVE_BATCH_ID || !openPurchases.find(function(p){return p.id===ACTIVE_BATCH_ID;})) ACTIVE_BATCH_ID = openPurchases[0].id;
+  const activeBatch = openPurchases.find(function(p){return p.id===ACTIVE_BATCH_ID;});
+  const activeFlats = sortedFlats().filter(function(f){return f.active;});
+
+  let html = '<div class="card">';
+  html += '<div class="batch-banner">Logging against batch <b>'+activeBatch.id+'</b>'
+    + (openPurchases.length>1 ? ' &nbsp;<a data-switch-batch="1">switch</a>' : '')
+    + '</div>';
+  if(SHOW_BATCH_SWITCH && openPurchases.length>1){
+    html += '<label>Switch active batch</label><select id="batchSwitchSelect">'
+      + openPurchases.map(function(p){return '<option value="'+p.id+'" '+(p.id===ACTIVE_BATCH_ID?'selected':'')+'>'+p.id+'</option>';}).join('')
+      + '</select>';
+  }
+  html += '<h2 style="margin-top:14px;">Log a meter reading</h2><p class="sub">The batch is fixed above \u2014 pick the flat, enter the reading, submit, repeat. No per-entry batch picking.</p>'
+    + '<form id="readingForm">'
+    + '<label>Flat</label><select name="flatId" id="flatSelect">'+activeFlats.map(function(f){return '<option value="'+f.id+'">'+f.id+(f.name?' \u2014 '+f.name:'')+'</option>';}).join('')+'</select>'
+    + '<div class="row2"><div><label>Previous reading</label><input type="number" step="0.01" name="previous" id="prevInput" required></div>'
+    + '<div><label>Current reading</label><input type="number" step="0.01" name="current" required></div></div>'
+    + '<label>Meter photo (optional but recommended)</label><input type="file" accept="image/*" capture="environment" name="photo">'
+    + '<button class="btn" type="submit">Save reading</button></form></div>';
+  return html;
+}
+function autofillPrevious(){
+  const flatSelect = document.getElementById('flatSelect');
+  if(!flatSelect) return;
+  const flatId = flatSelect.value;
+  const last = DATA.readings.filter(function(r){return r.flatId===flatId;}).sort(function(a,b){return b.dateLogged.localeCompare(a.dateLogged);})[0];
+  document.getElementById('prevInput').value = last ? last.current : 0;
+}
+
+function viewHistory(){
+  const isResident = CURRENT_USER.role === 'resident';
+  if(isResident && !CURRENT_USER.flat_id){
+    return '<div class="card"><div class="empty">Your account isn\u2019t linked to a flat yet. Ask an admin to assign your flat in Admin \u2192 People & access.</div></div>';
+  }
+  if(isResident) HISTORY_FLAT = CURRENT_USER.flat_id;
+  if(!HISTORY_FLAT) HISTORY_FLAT = DATA.flats[0] ? DATA.flats[0].id : null;
+  if(!HISTORY_FLAT) return '<div class="card"><div class="empty">No flats set up yet.</div></div>';
+
+  const cycles = flatCycles(HISTORY_FLAT, 'actual');
+  const f = flatById(HISTORY_FLAT);
+
+  let html = '<div class="card"><h2>Flat Dashboard</h2><p class="sub">Consumption, bills, and the full calculation chain for one flat.</p>';
+  if(!isResident){
+    html += '<select id="historyFlat">'+sortedFlats().map(function(fl){return '<option value="'+fl.id+'" '+(HISTORY_FLAT===fl.id?'selected':'')+'>'+fl.id+(fl.name?' \u2014 '+fl.name:'')+(fl.active?'':' (inactive)')+'</option>';}).join('')+'</select>';
+  }
+  html += '</div>';
+
+  if(cycles.length===0){
+    html += '<div class="card"><div class="empty">No billing cycles with a reading for '+HISTORY_FLAT+' yet.</div></div>';
+    return html + photoHistorySection(HISTORY_FLAT);
+  }
+
+  const latest = cycles[cycles.length-1];
+  const prevCycle = cycles.length>1 ? cycles[cycles.length-2] : null;
+
+  html += '<div class="card"><h2>'+HISTORY_FLAT+(f&&f.name?' \u2014 '+f.name:'')+'</h2><p class="sub">'+cycleLabel(latest.period, cycles.length-1)+'</p>';
+  html += '<div class="row2">'
+    + '<div class="subcard" style="text-align:center;"><div class="bignum">'+fmtQty(latest.kg)+' kg</div><div class="bignum-l">This cycle consumed</div></div>'
+    + '<div class="subcard" style="text-align:center;"><div class="bignum">Tk '+fmtTk(latest.bill)+'</div><div class="bignum-l">This cycle bill</div></div>'
+    + '</div>';
+  if(prevCycle){
+    const pctChange = prevCycle.kg>0 ? ((latest.kg-prevCycle.kg)/prevCycle.kg*100) : 0;
+    const dir = pctChange>0.05 ? 'increased' : (pctChange<-0.05 ? 'decreased' : 'stayed about the same as');
+    html += '<div class="hint" style="margin-top:10px;">Consumption '+dir+(Math.abs(pctChange)>=0.05?' by '+Math.abs(pctChange).toFixed(1)+'%':'')+' compared with last cycle ('+fmtQty(prevCycle.kg)+' kg).</div>';
+  }
+
+  html += '<div class="hint" style="margin:14px 0 6px;">Calculation chain for this cycle:</div>';
+  html += '<div class="subcard"><div class="tablewrap"><table style="margin-top:0;"><tbody>'
+    + '<tr><td>Previous Reading</td><td class="num">'+fmtQty(latest.previous)+'</td></tr>'
+    + '<tr><td>Current Reading</td><td class="num">'+fmtQty(latest.current)+'</td></tr>'
+    + '<tr><td>Units Consumed</td><td class="num">'+fmtQty(latest.units)+'</td></tr>'
+    + '<tr><td>KG Consumed</td><td class="num">'+fmtQty(latest.kg)+' kg</td></tr>'
+    + '<tr><td>Rate</td><td class="num">Tk '+fmtTk(latest.pricePerKg)+'/kg</td></tr>'
+    + '<tr><td>Total Bill</td><td class="num">Tk '+fmtTk(latest.bill)+'</td></tr>'
+    + '</tbody></table></div></div>';
+
+  const kgs = cycles.map(function(c){return c.kg;});
+  const bills = cycles.map(function(c){return c.bill;});
+  html += '<div class="hint" style="margin:14px 0 6px;">Consumption summary:</div>';
+  html += '<div class="stat-grid-3">'
+    + '<div class="stat"><div class="v">'+fmtQty(latest.kg)+'</div><div class="l">This cycle kg</div></div>'
+    + '<div class="stat"><div class="v">'+(prevCycle?fmtQty(prevCycle.kg):'\u2014')+'</div><div class="l">Previous cycle kg</div></div>'
+    + '<div class="stat"><div class="v">'+fmtQty(avg(kgs.slice(-3)))+'</div><div class="l">Avg last 3</div></div>'
+    + '<div class="stat"><div class="v">'+fmtQty(avg(kgs.slice(-6)))+'</div><div class="l">Avg last 6</div></div>'
+    + '<div class="stat"><div class="v">'+fmtQty(kgs.slice(-12).reduce(function(s,v){return s+v;},0))+'</div><div class="l">Total last 12</div></div>'
+    + '<div class="stat"><div class="v">'+cycles.length+'</div><div class="l">Cycles on record</div></div>'
+    + '</div>';
+  html += '<div class="hint" style="margin:14px 0 6px;">Billing summary:</div>';
+  html += '<div class="stat-grid-3">'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(latest.bill)+'</div><div class="l">This cycle</div></div>'
+    + '<div class="stat"><div class="v">'+(prevCycle?'Tk '+fmtTk(prevCycle.bill):'\u2014')+'</div><div class="l">Previous cycle</div></div>'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(avg(bills.slice(-3)))+'</div><div class="l">Avg last 3</div></div>'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(avg(bills.slice(-6)))+'</div><div class="l">Avg last 6</div></div>'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(bills.reduce(function(s,v){return s+v;},0))+'</div><div class="l">Total, all cycles</div></div>'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(avg(bills))+'</div><div class="l">Avg / cycle</div></div>'
+    + '</div>';
+
+  if(cycles.length>=3){
+    const priorAvg = avg(kgs.slice(0,-1));
+    const threshold = (DATA.settings && DATA.settings.abnormalThresholdPct!=null) ? DATA.settings.abnormalThresholdPct : 25;
+    if(priorAvg>0){
+      const changePct = (latest.kg-priorAvg)/priorAvg*100;
+      if(changePct >= threshold){
+        html += '<div class="warn-box">\u26a0\ufe0f Higher than usual \u2014 '+HISTORY_FLAT+' consumed '+fmtQty(latest.kg)+' kg this cycle. Average previous consumption: '+fmtQty(priorAvg)+' kg. Increase: '+changePct.toFixed(1)+'%.</div>';
+      } else if(changePct <= -threshold){
+        html += '<div class="warn-box">\u26a0\ufe0f Lower than usual \u2014 '+HISTORY_FLAT+' consumed '+fmtQty(latest.kg)+' kg this cycle, '+Math.abs(changePct).toFixed(1)+'% below its usual average of '+fmtQty(priorAvg)+' kg. Worth checking a reading wasn\u2019t missed.</div>';
+      }
+    }
+  }
+  html += '</div>';
+
+  const rangeN = GRAPH_RANGE==='all' ? cycles.length : Math.min(parseInt(GRAPH_RANGE,10), cycles.length);
+  const shown = cycles.slice(-rangeN);
+  const shownLabels = shown.map(function(c){ return 'C'+(cycles.indexOf(c)+1); });
+  const legend = shown.map(function(c){ return 'C'+(cycles.indexOf(c)+1)+' = '+cycleShortRange(c.period); }).join(' \u00b7 ');
+
+  html += '<div class="card"><h2>Monthly LPG consumption</h2><p class="sub">'+HISTORY_FLAT+' \u2014 by billing cycle, not calendar month</p>'
+    + '<div class="range-toggle">'
+      + '<button data-range="6" class="'+(GRAPH_RANGE==='6'?'on':'')+'">6 cycles</button>'
+      + '<button data-range="12" class="'+(GRAPH_RANGE==='12'?'on':'')+'">12 cycles</button>'
+      + '<button data-range="all" class="'+(GRAPH_RANGE==='all'?'on':'')+'">All</button>'
+    + '</div>'
+    + barChart(shown.map(function(c){return c.kg;}), shownLabels, 'var(--flame)')
+    + '<div class="chart-legend">'+legend+'</div></div>';
+
+  html += '<div class="card"><h2>Monthly LPG bill</h2><p class="sub">Same cycles, billed amount (Tk)</p>'
+    + barChart(shown.map(function(c){return c.bill;}), shownLabels, 'var(--teal)')
+    + '<div class="chart-legend">'+legend+'</div></div>';
+
+  html += '<div class="card"><h2>Billing history</h2><p class="sub">Complete calculation chain for every cycle.</p>'
+    + '<div class="tablewrap"><table><thead><tr><th>Cycle</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">KG</th><th class="num">Rate/kg</th><th class="num">Bill</th></tr></thead><tbody>'
+    + cycles.slice().reverse().map(function(c){
+        const idx = cycles.indexOf(c);
+        return '<tr><td>'+cycleLabel(c.period, idx)+'</td><td class="num">'+fmtQty(c.previous)+'</td><td class="num">'+fmtQty(c.current)+'</td><td class="num">'+fmtQty(c.units)+'</td><td class="num">'+fmtQty(c.kg)+'</td><td class="num">Tk '+fmtTk(c.pricePerKg)+'</td><td class="num">Tk '+fmtTk(c.bill)+'</td></tr>';
+      }).join('')
+    + '</tbody></table></div></div>';
+
+  return html + photoHistorySection(HISTORY_FLAT);
+}
+function photoHistorySection(flatId){
+  const items = DATA.readings.filter(function(r){return r.flatId===flatId;}).sort(function(a,b){return b.dateLogged.localeCompare(a.dateLogged);});
+  let html = '<div class="card"><h2>Meter reading photos</h2><p class="sub">Proof photo for every reading logged.</p>';
+  if(items.length===0) html += '<div class="empty">No readings logged for this flat yet.</div>';
+  items.forEach(function(r){
+    html += '<div class="flat-history">'
+      + (r.hasPhoto ? '<div>'
+          + '<img src="" data-reading="'+r.id+'" class="hist-photo">'
+          + (CURRENT_USER.role==='admin' ? '<div style="text-align:center;margin-top:3px;"><a data-del-photo="'+r.id+'" style="font-size:10px;color:var(--red);cursor:pointer;text-decoration:underline;">delete photo</a></div>' : '')
+          + '</div>'
+        : '<div class="ph-none">no photo</div>')
+      + '<div class="fh-body"><b>'+r.previous+' \u2192 '+r.current+' ('+(r.current-r.previous)+' units)</b>'
+      + '<div class="fh-meta">'+r.dateLogged+' \u00b7 batch '+r.purchaseId+' \u00b7 logged by '+r.loggedBy+'</div></div></div>';
+  });
+  html += '</div>';
+  return html;
+}
+function loadPhotosForHistory(){
+  document.querySelectorAll('.hist-photo').forEach(function(img){
+    const url = photoUrl(img.dataset.reading);
+    if(url){ img.src = url; img.onclick = function(){ showPhotoModal(url); }; }
+  });
+}
+function showPhotoModal(src){
+  if(!src) return;
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = '<img src="'+src+'">';
+  bg.onclick = function(){ bg.remove(); };
+  document.body.appendChild(bg);
+}
+
+function viewAdmin(){
+  if(CURRENT_USER.role !== 'admin') return '<div class="card"><div class="locked">Admin access only.</div></div>';
+  let html = '<div class="card"><h2>People & access</h2><p class="sub">Share your app link \u2014 anyone can create an account from the sign-in screen, but nothing is granted until you assign a role here. Only admins can change roles or remove access.</p>';
+  if(PROFILES.length===0) html += '<div class="empty">No accounts yet, or still loading\u2026</div>';
+  PROFILES.forEach(function(u){
+    html += '<div class="user-row"><div class="ui"><b>'+u.name+'</b><span>'+u.email+(u.role==='pending'?' \u00b7 awaiting approval':'')+(u.role==='resident'&&u.flat_id?' \u00b7 flat '+u.flat_id:'')+'</span></div>'
+      + '<select data-profile="'+u.id+'" class="roleSelect"><option value="pending" '+(u.role==='pending'?'selected':'')+'>Pending</option>'+Object.keys(ROLE_LABEL).map(function(r){return '<option value="'+r+'" '+(u.role===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>';}).join('')+'</select>'
+      + (u.role==='resident' ? '<select data-profile-flat="'+u.id+'"><option value="">No flat</option>'+sortedFlats().map(function(fl){return '<option value="'+fl.id+'" '+(u.flat_id===fl.id?'selected':'')+'>'+fl.id+'</option>';}).join('')+'</select>' : '')
+      + (u.id!==CURRENT_USER.id ? '<button class="btn danger small" data-remove-profile="'+u.id+'">Remove</button>' : '')
+      + '</div>';
+  });
+  html += '</div>';
+
+  html += '<div class="card"><h2>Abnormal consumption alerts</h2><p class="sub">A flat\u2019s consumption is flagged on its dashboard when it swings this much versus its own average (needs at least 3 cycles of history).</p>'
+    + '<label>Flag when consumption changes by more than</label><input type="number" id="thresholdInput" value="'+((DATA.settings&&DATA.settings.abnormalThresholdPct!=null)?DATA.settings.abnormalThresholdPct:25)+'" min="5" max="200" step="1"> <span class="hint">%</span>'
+    + '<button class="btn small" id="saveThreshold" style="margin-top:12px;">Save</button></div>';
+
+  html += '<div class="card"><h2>Free up photo storage</h2><p class="sub">Deletes old proof photos only \u2014 every reading, cylinder record, and bill stays exactly as it is. Photos are already shrunk automatically when captured; use this if storage space still gets tight.</p>'
+    + '<label>Delete photos older than</label><select id="cleanupCutoff"><option value="3">3 months</option><option value="6" selected>6 months</option><option value="12">12 months</option></select>'
+    + '<button class="btn danger small" id="cleanupPhotos" style="margin-top:12px;">Delete old photos</button></div>';
+
+  html += '<div class="card"><h2>Flats & residents</h2><p class="sub">Add missing flats (e.g. 8D), rename residents, set phone numbers, and mark a flat inactive when it is not using LPG. Inactive flats are hidden from the reading form but keep their history.</p>';
+  sortedFlats().forEach(function(f){
+    html += '<div class="flatrow '+(f.active?'':'inactive')+'">'
+      + '<div class="fid">'+f.id+'</div>'
+      + '<input type="text" class="flatName" data-flat="'+f.id+'" value="'+(f.name||'')+'" placeholder="Resident name">'
+      + '<input type="text" class="flatPhone" data-flat="'+f.id+'" value="'+(f.phone||'')+'" placeholder="8801XXXXXXXXX">'
+      + '<span class="pill '+(f.active?'active':'inactive')+'" data-toggle-active="'+f.id+'">'+(f.active?'Active':'Inactive')+'</span>'
+      + '<button class="btn danger small" data-remove-flat="'+f.id+'">Del</button>'
+      + '</div>';
+  });
+  html += '<button class="btn" id="saveFlats" style="margin-top:14px;">Save flats & residents</button></div>';
+
+  html += '<div class="card"><h2>Add a flat</h2><form id="addFlatForm">'
+    + '<div class="row3"><div><label>Flat ID</label><input type="text" name="flatId" placeholder="e.g. 8D" required></div>'
+    + '<div><label>Resident name</label><input type="text" name="name"></div>'
+    + '<div><label>Phone</label><input type="text" name="phone" placeholder="8801XXXXXXXXX"></div></div>'
+    + '<button class="btn" type="submit">Add flat</button></form></div>';
+  return html;
+}
+
+function bindMainEvents(){
+  document.querySelectorAll('.purchase-row').forEach(function(row){
+    row.onclick = function(){ EXPANDED_PURCHASE = EXPANDED_PURCHASE===row.dataset.purchase ? null : row.dataset.purchase; EDIT_PURCHASE_ID=null; EDIT_READING_ID=null; SET_RATE_FOR=null; renderMain(); };
+  });
+
+  document.querySelectorAll('[data-method]').forEach(function(btn){
+    btn.onclick = function(e){ e.stopPropagation(); REPORT_METHOD[btn.dataset.purchase] = btn.dataset.method; renderMain(); };
+  });
+  document.querySelectorAll('[data-edit-rate]').forEach(function(a){
+    a.onclick = function(e){ e.stopPropagation(); SET_RATE_FOR = a.dataset.editRate; renderMain(); };
+  });
+  document.querySelectorAll('[data-cancel-rate]').forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); SET_RATE_FOR=null; renderMain(); }; });
+  document.querySelectorAll('[data-save-rate]').forEach(function(b){
+    b.onclick = async function(e){
+      e.stopPropagation();
+      const p = DATA.purchases.find(function(x){return x.id===b.dataset.saveRate;});
+      p.manualRate = parseFloat(document.getElementById('manualRateInput').value) || 0;
+      SET_RATE_FOR = null;
+      await saveStore('lpg-data', true, DATA);
+      toast('Manual rate saved \u2014 reports can be re-printed with this value.');
+      renderMain();
+    };
+  });
+
+  document.querySelectorAll('[data-edit-purchase]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); EDIT_PURCHASE_ID = b.dataset.editPurchase; const p = DATA.purchases.find(function(x){return x.id===EDIT_PURCHASE_ID;}); EDIT_CYLINDERS = (p.cylinders||[]).map(function(c){return Object.assign({},c);}); renderMain(); }; });
+  document.querySelectorAll('[data-cancel-edit-purchase]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); EDIT_PURCHASE_ID=null; EDIT_CYLINDERS=[]; renderMain(); }; });
+  function captureCylinderEdits(){
+    document.querySelectorAll('.cylDate').forEach(function(inp){ const c = EDIT_CYLINDERS.find(function(x){return x.id===inp.dataset.cyl;}); if(c) c.date = inp.value; });
+    document.querySelectorAll('.cylQty').forEach(function(inp){ const c = EDIT_CYLINDERS.find(function(x){return x.id===inp.dataset.cyl;}); if(c) c.qty = inp.value; });
+    document.querySelectorAll('.cylKg').forEach(function(inp){ const c = EDIT_CYLINDERS.find(function(x){return x.id===inp.dataset.cyl;}); if(c) c.kg = inp.value; });
+    document.querySelectorAll('.cylCost').forEach(function(inp){ const c = EDIT_CYLINDERS.find(function(x){return x.id===inp.dataset.cyl;}); if(c) c.cost = inp.value; });
+  }
+  document.querySelectorAll('[data-add-cyl]').forEach(function(b){
+    b.onclick = function(e){ e.stopPropagation(); captureCylinderEdits(); EDIT_CYLINDERS.push({ id: uid('CYL'), date: new Date().toISOString().slice(0,10), qty:1, kg:'', cost:'' }); renderMain(); };
+  });
+  document.querySelectorAll('[data-del-cyl]').forEach(function(b){
+    b.onclick = function(e){ e.stopPropagation(); captureCylinderEdits(); EDIT_CYLINDERS = EDIT_CYLINDERS.filter(function(c){return c.id!==b.dataset.delCyl;}); renderMain(); };
+  });
+  document.querySelectorAll('[data-save-purchase]').forEach(function(b){
+    b.onclick = async function(e){
+      e.stopPropagation();
+      captureCylinderEdits();
+      const p = DATA.purchases.find(function(x){return x.id===b.dataset.savePurchase;});
+      p.cylinders = EDIT_CYLINDERS.map(function(c){ return { id:c.id, date:c.date, qty: Math.max(1, parseInt(c.qty,10)||1), kg:parseFloat(c.kg)||0, cost:parseFloat(c.cost)||0, hasPhoto: !!c.hasPhoto }; }).filter(function(c){ return c.kg>0 || c.cost>0; });
+      p.status = document.getElementById('epStatus').value;
+      EDIT_PURCHASE_ID = null; EDIT_CYLINDERS = [];
+      await saveStore('lpg-data', true, DATA);
+      toast('Batch updated');
+      renderMain();
+    };
+  });
+  document.querySelectorAll('[data-view-cyl-photo]').forEach(function(b){
+    b.onclick = function(e){ e.stopPropagation(); showPhotoModal(photoUrl(b.dataset.viewCylPhoto)); };
+  });
+  document.querySelectorAll('[data-close-batch]').forEach(function(b){
+    b.onclick = async function(){
+      if(!confirm('Close this batch? Make sure meter readings for this cycle are logged first \u2014 you can still fix cylinder details later from a batch\u2019s Edit button.')) return;
+      const p = DATA.purchases.find(function(x){return x.id===b.dataset.closeBatch;});
+      p.status = 'closed';
+      await saveStore('lpg-data', true, DATA);
+      toast('Batch '+p.id+' closed');
+      TAB='dashboard'; EXPANDED_PURCHASE=p.id; renderAll();
+    };
+  });
+
+  document.querySelectorAll('[data-edit-reading]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); EDIT_READING_ID = b.dataset.editReading; renderMain(); }; });
+  document.querySelectorAll('[data-cancel-edit-reading]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); EDIT_READING_ID=null; renderMain(); }; });
+  document.querySelectorAll('[data-save-reading]').forEach(function(b){
+    b.onclick = async function(e){
+      e.stopPropagation();
+      const r = DATA.readings.find(function(x){return x.id===b.dataset.saveReading;});
+      r.flatId = document.getElementById('erFlat').value;
+      r.previous = parseFloat(document.getElementById('erPrev').value);
+      r.current = parseFloat(document.getElementById('erCurr').value);
+      r.purchaseId = document.getElementById('erBatch').value;
+      EDIT_READING_ID = null;
+      await saveStore('lpg-data', true, DATA);
+      toast('Reading updated');
+      renderMain();
+    };
+  });
+  document.querySelectorAll('[data-delete-reading]').forEach(function(b){
+    b.onclick = async function(e){
+      e.stopPropagation();
+      if(!confirm('Delete this reading? This cannot be undone.')) return;
+      DATA.readings = DATA.readings.filter(function(x){return x.id!==b.dataset.deleteReading;});
+      EDIT_READING_ID = null;
+      await saveStore('lpg-data', true, DATA);
+      toast('Reading deleted');
+      renderMain();
+    };
+  });
+
+  document.querySelectorAll('[data-print]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); printReport(b.dataset.print, REPORT_METHOD[b.dataset.print]||'actual'); }; });
+  document.querySelectorAll('[data-wa]').forEach(function(b){
+    b.onclick = function(e){ e.stopPropagation(); const link = waLink(b.dataset.wa, b.dataset.purchase, REPORT_METHOD[b.dataset.purchase]||'actual'); if(link) window.open(link,'_blank'); };
+  });
+
+  const cf = document.getElementById('cylForm');
+  if(cf) cf.onsubmit = async function(e){
+    e.preventDefault();
+    const fd = new FormData(cf);
+    let open = DATA.purchases.find(function(p){return p.status==='open';});
+    const cylId = uid('CYL');
+    const file = fd.get('photo');
+    let hasPhoto = false;
+    if(file && file.size > 0){
+      const dataUrl = await compressImage(file);
+      await saveStore('photo:'+cylId, true, dataUrl);
+      hasPhoto = true;
+    }
+    const cyl = { id: cylId, date: fd.get('date'), qty: Math.max(1, parseInt(fd.get('qty'),10)||1), kg: parseFloat(fd.get('kg')), cost: parseFloat(fd.get('cost')), hasPhoto: hasPhoto };
+    let isNewBatch = false;
+    if(!open){
+      open = { id: nextPurchaseId(), status:'open', manualRate:null, cylinders: [] };
+      DATA.purchases.push(open);
+      ACTIVE_BATCH_ID = open.id;
+      isNewBatch = true;
+    }
+    open.cylinders.push(cyl);
+    await saveStore('lpg-data', true, DATA);
+    toast(isNewBatch ? 'Batch '+open.id+' started' : 'Cylinder added to '+open.id);
+    cf.reset();
+    renderMain();
+  };
+
+  const fs = document.getElementById('flatSelect');
+  if(fs){ fs.onchange = autofillPrevious; autofillPrevious(); }
+  const switchLink = document.querySelector('[data-switch-batch]');
+  if(switchLink) switchLink.onclick = function(){ SHOW_BATCH_SWITCH = !SHOW_BATCH_SWITCH; renderMain(); };
+  const bss = document.getElementById('batchSwitchSelect');
+  if(bss) bss.onchange = function(){ ACTIVE_BATCH_ID = bss.value; SHOW_BATCH_SWITCH=false; renderMain(); };
+
+  const rf = document.getElementById('readingForm');
+  if(rf) rf.onsubmit = async function(e){
+    e.preventDefault();
+    const fd = new FormData(rf);
+    const readingId = uid('R');
+    const file = fd.get('photo');
+    let hasPhoto = false;
+    if(file && file.size > 0){
+      const dataUrl = await compressImage(file);
+      await saveStore('photo:'+readingId, true, dataUrl);
+      hasPhoto = true;
+    }
+    const reading = { id: readingId, purchaseId: ACTIVE_BATCH_ID, flatId: fd.get('flatId'), previous: parseFloat(fd.get('previous')), current: parseFloat(fd.get('current')), dateLogged: new Date().toISOString().slice(0,10), loggedBy: CURRENT_USER.name, hasPhoto: hasPhoto };
+    DATA.readings.push(reading);
+    await saveStore('lpg-data', true, DATA);
+    toast('Reading saved for '+reading.flatId);
+    rf.reset(); autofillPrevious();
+  };
+
+  const hf = document.getElementById('historyFlat');
+  if(hf){ hf.onchange = function(){ HISTORY_FLAT = hf.value; renderMain(); }; }
+  if(TAB==='history') loadPhotosForHistory();
+  document.querySelectorAll('[data-range]').forEach(function(b){
+    b.onclick = function(){ GRAPH_RANGE = b.dataset.range; renderMain(); };
+  });
+  document.querySelectorAll('[data-del-photo]').forEach(function(a){
+    a.onclick = async function(){
+      if(!confirm('Delete this photo? The reading itself stays \u2014 only the image is removed.')) return;
+      try{ await sb.storage.from('meter-photos').remove([a.dataset.delPhoto+'.jpg']); }catch(err){ console.error(err); }
+      const r = DATA.readings.find(function(x){return x.id===a.dataset.delPhoto;});
+      if(r) r.hasPhoto = false;
+      await saveStore('lpg-data', true, DATA);
+      toast('Photo deleted');
+      renderMain();
+    };
+  });
+
+  document.querySelectorAll('.roleSelect').forEach(function(sel){
+    sel.onchange = async function(){
+      const { error } = await sb.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.profile);
+      if(error){ toast('Update failed'); return; }
+      toast('Role updated'); await loadProfiles();
+    };
+  });
+  document.querySelectorAll('[data-profile-flat]').forEach(function(sel){
+    sel.onchange = async function(){
+      const { error } = await sb.from('profiles').update({ flat_id: sel.value || null }).eq('id', sel.dataset.profileFlat);
+      if(error){ toast('Update failed'); return; }
+      toast('Flat assigned'); await loadProfiles();
+    };
+  });
+  document.querySelectorAll('[data-remove-profile]').forEach(function(btn){
+    btn.onclick = async function(){
+      if(!confirm("Remove this person's access? They can request access again later.")) return;
+      const { error } = await sb.from('profiles').delete().eq('id', btn.dataset.removeProfile);
+      if(error){ toast('Remove failed'); return; }
+      toast('Access removed'); await loadProfiles();
+    };
+  });
+  const saveThresholdBtn = document.getElementById('saveThreshold');
+  if(saveThresholdBtn) saveThresholdBtn.onclick = async function(){
+    const v = parseFloat(document.getElementById('thresholdInput').value);
+    if(!DATA.settings) DATA.settings = {};
+    DATA.settings.abnormalThresholdPct = isFinite(v) ? v : 25;
+    await saveStore('lpg-data', true, DATA);
+    toast('Threshold saved');
+  };
+
+  document.querySelectorAll('[data-toggle-active]').forEach(function(p){
+    p.onclick = function(){ const f = flatById(p.dataset.toggleActive); f.active = !f.active; renderMain(); };
+  });
+  document.querySelectorAll('[data-remove-flat]').forEach(function(b){
+    b.onclick = function(){
+      if(DATA.readings.some(function(r){return r.flatId===b.dataset.removeFlat;})){ toast("Can't delete \u2014 this flat has reading history. Mark it inactive instead."); return; }
+      if(!confirm('Remove this flat?')) return;
+      DATA.flats = DATA.flats.filter(function(f){return f.id!==b.dataset.removeFlat;});
+      renderMain();
+    };
+  });
+  const cleanupBtn = document.getElementById('cleanupPhotos');
+  if(cleanupBtn) cleanupBtn.onclick = async function(){
+    const months = parseInt(document.getElementById('cleanupCutoff').value,10);
+    const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-months);
+    const cutoffStr = cutoff.toISOString().slice(0,10);
+    const oldReadings = DATA.readings.filter(function(r){return r.hasPhoto && r.dateLogged < cutoffStr;});
+    const oldCyls = [];
+    DATA.purchases.forEach(function(p){ (p.cylinders||[]).forEach(function(c){ if(c.hasPhoto && c.date < cutoffStr) oldCyls.push(c); }); });
+    const total = oldReadings.length + oldCyls.length;
+    if(total===0){ toast('No photos older than that cutoff'); return; }
+    if(!confirm('Delete '+total+' photo(s) older than '+cutoffStr+'? Only the images go \u2014 readings and cylinder records stay.')) return;
+    const paths = oldReadings.map(function(r){return r.id+'.jpg';}).concat(oldCyls.map(function(c){return c.id+'.jpg';}));
+    try{ await sb.storage.from('meter-photos').remove(paths); }catch(err){ console.error(err); }
+    oldReadings.forEach(function(r){ r.hasPhoto=false; });
+    oldCyls.forEach(function(c){ c.hasPhoto=false; });
+    await saveStore('lpg-data', true, DATA);
+    toast('Deleted '+total+' old photo(s)');
+    renderMain();
+  };
+
+  const saveFlatsBtn = document.getElementById('saveFlats');
+  if(saveFlatsBtn) saveFlatsBtn.onclick = async function(){
+    document.querySelectorAll('.flatName').forEach(function(inp){ flatById(inp.dataset.flat).name = inp.value.trim(); });
+    document.querySelectorAll('.flatPhone').forEach(function(inp){ flatById(inp.dataset.flat).phone = inp.value.trim(); });
+    await saveStore('lpg-data', true, DATA);
+    toast('Flats & residents saved');
+  };
+  const addFlatForm = document.getElementById('addFlatForm');
+  if(addFlatForm) addFlatForm.onsubmit = async function(e){
+    e.preventDefault();
+    const fd = new FormData(addFlatForm);
+    const id = fd.get('flatId').trim();
+    if(!id){ return; }
+    if(DATA.flats.find(function(f){return f.id===id;})){ toast('That flat ID already exists'); return; }
+    DATA.flats.push({ id: id, name: fd.get('name').trim(), phone: fd.get('phone').trim(), active: true });
+    await saveStore('lpg-data', true, DATA);
+    toast('Flat '+id+' added');
+    addFlatForm.reset(); renderMain();
+  };
+}
+
+function compressImage(file){
+  return new Promise(function(resolve){
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const img = new Image();
+      img.onload = function(){
+        const maxW = 480;
+        const scale = Math.min(1, maxW/img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width*scale; canvas.height = img.height*scale;
+        canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.5));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function waLink(readingId, purchaseId, method){
+  const p = DATA.purchases.find(function(x){return x.id===purchaseId;});
+  const b = computeBilling(p, DATA.readings, method);
+  const row = b.rows.find(function(r){return r.id===readingId;});
+  const f = flatById(row.flatId);
+  const phone = (f.phone||'').replace(/[^0-9]/g,'');
+  if(!phone || !row) return null;
+  const greeting = f.name ? ('Dear '+f.name+', (Flat '+f.id+')') : ('Dear Flat '+f.id+' User,');
+  const rateLine = method==='manual'
+    ? ('Manual Conversion Rate: '+b.rate.toFixed(2)+' kg/unit')
+    : ('Conversion Ratio (Actual): '+b.rate.toFixed(2)+' kg/unit');
+  const msg = greeting+'\nYour LPG bill for '+p.id+' is ready.\n'
+    + 'Previous Reading: '+fmtQty(row.previous)+' | Current Reading: '+fmtQty(row.current)+'\n'
+    + 'Units Used: '+fmtQty(row.units)+' | '+rateLine+' | Price Per KG: '+fmtTk(b.pricePerKg)+' TK.\n'
+    + 'Bill Amount: '+fmtTk(row.bill)+' TK.\n'
+    + 'Please pay at your earliest convenience.\nThank you!';
+  return 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
+}
+
+const OFFICE_ADDRESS = 'House 147, Road 2, Block A, Pallabi, Mirpur 12, Dhaka';
+
+function addAddressFooter(doc){
+  const pageCount = doc.internal.getNumberOfPages();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  for(let i=1;i<=pageCount;i++){
+    doc.setPage(i);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.setTextColor(150,150,150);
+    doc.text(OFFICE_ADDRESS, pageWidth-40, pageHeight-24, { align: 'right' });
+  }
+}
+
+function cycleFilename(purchaseId){
+  const m = /^P-(\d+)/.exec(purchaseId||'');
+  const num = m ? m[1] : (purchaseId||'report').replace(/[^A-Za-z0-9]/g,'');
+  return 'LPG_Billing_Report_Cycle_'+num+'.pdf';
+}
+
+function printReport(purchaseId, method){
+  const p = DATA.purchases.find(function(x){return x.id===purchaseId;});
+  const b = computeBilling(p, DATA.readings, method);
+  const period = billingPeriod(p, DATA.readings);
+  const methodLabel = method==='manual' ? ('Manual conversion rate: '+b.rate.toFixed(2)+' kg per meter unit (set by admin)') : ('Actual conversion ratio: '+b.rate.toFixed(3)+' kg per meter unit (calculated automatically from this batch)');
+  const rec = computeReconciliation(p, DATA.readings);
+
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  if(!jsPDFCtor){ toast('PDF library failed to load \u2014 check your connection and try again'); return; }
+  const doc = new jsPDFCtor({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 40;
+  let y = 50;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(27,42,46);
+  doc.text('LPG Ledger \u2014 '+p.id, margin, y);
+  y += 20;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(85,85,85);
+  const metaLine = (period ? period.start+' to '+period.end+' ('+period.days+' days) \u00b7 ' : '')+cylinderTotals(p).qty+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg \u00b7 Tk '+fmtTk(b.totalCost)+' \u00b7 blended price/kg Tk '+fmtTk(b.pricePerKg);
+  doc.text(metaLine, margin, y);
+  y += 16;
+
+  const methodLines = doc.splitTextToSize('Billing method: '+methodLabel, pageWidth-2*margin-16);
+  doc.setFillColor(243,226,210);
+  doc.roundedRect(margin, y-10, pageWidth-2*margin, methodLines.length*12+12, 4, 4, 'F');
+  doc.setTextColor(122,61,15);
+  doc.text(methodLines, margin+8, y+2);
+  y += methodLines.length*12+22;
+
+  const rows = b.rows.slice().sort(function(a,c){return naturalFlatCompare(a.flatId,c.flatId);}).map(function(r){
+    return [r.flatId, fmtQty(r.previous), fmtQty(r.current), fmtQty(r.units), fmtTk(r.bill)];
+  });
+
+  doc.autoTable({
+    startY: y,
+    margin: { left: margin, right: margin },
+    head: [['Flat','Prev','Curr','Units','Bill (Tk)']],
+    body: rows,
+    foot: [['Total','','', fmtQty(b.totalUnits), fmtTk(b.totalBill)]],
+    styles: { font:'helvetica', fontSize: 9, textColor:[27,42,46], halign:'right' },
+    headStyles: { fillColor:[27,42,46], textColor:255, halign:'right' },
+    footStyles: { fillColor:[231,234,231], textColor:[27,42,46], fontStyle:'bold', halign:'right' }
+  });
+
+  let ry = (doc.lastAutoTable ? doc.lastAutoTable.finalY : y+200) + 22;
+  if(ry > doc.internal.pageSize.getHeight() - 90){ doc.addPage(); ry = 50; }
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(27,42,46);
+  doc.text('Reconciliation', margin, ry); ry += 14;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(85,85,85);
+  let recLine = 'Actual: '+rec.actual.reconciliationPct.toFixed(1)+'% (purchased vs. calculated-from-metered, expected near 100% by design)';
+  if(rec.manual) recLine += ' \u00b7 Manual: '+rec.manual.recoveryPct.toFixed(1)+'% recovered, '+fmtQty(rec.manual.diffKg)+' kg / Tk '+fmtTk(rec.manual.varianceTk)+' unaccounted';
+  const recLines = doc.splitTextToSize(recLine, pageWidth-2*margin);
+  doc.text(recLines, margin, ry);
+
+  addAddressFooter(doc);
+  doc.save(cycleFilename(p.id));
+}
+
+async function boot(){
+  if(!sb){ AUTH_STATUS = 'nobackend'; renderAll(); return; }
+  sb.auth.onAuthStateChange(function(event){
+    if(event === 'SIGNED_OUT'){ AUTH_STATUS='signedout'; CURRENT_USER=null; renderAll(); }
+  });
+  await checkSession();
+}
+boot();
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('service-worker.js').catch(function(){}); });
+}
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+</body>
+</html>
