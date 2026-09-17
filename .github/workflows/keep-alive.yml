@@ -1,0 +1,16 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # runs every day at 3:00 AM UTC
+  workflow_dispatch:        # lets you also trigger it manually to test
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping LPG Ledger Supabase project
+        run: |
+          curl -s -o /dev/null -w "LPG Ledger ping status: %{http_code}\n" \
+            "https://bqqyclfhzayogxaqzpgb.supabase.co/rest/v1/" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxcXljbGZoemF5b2d4YXF6cGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0NzM4MDAsImV4cCI6MjEwMDA0OTgwMH0.SUx-uKM3OloQcbMQdPv6AXap2ZcT2n_h27eKhur9rZA"
