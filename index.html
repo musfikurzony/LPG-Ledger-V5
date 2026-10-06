@@ -258,14 +258,32 @@ function cylinderTotals(p){
     qty: cyls.reduce(function(s,c){return s+(c.qty||1);},0)
   };
 }
+function addDaysISO(iso, n){ const d = new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function firstCylDate(p){ const d = (p.cylinders||[]).map(function(c){return c.date;}).filter(Boolean).sort(); return d.length ? d[0] : null; }
+// Billing period for a batch:
+//  start = manual override, else first cylinder purchase date
+//  end   = manual override, else the day before the NEXT batch's first purchase,
+//          else (latest batch) today if open / last reading date if closed
+//  days are counted inclusively (Aug 4 -> Aug 31 = 28 days), so back-to-back cycles never overlap or leave gaps.
 function billingPeriod(p, readings){
-  const cylDates = (p.cylinders||[]).map(function(c){return c.date;}).filter(Boolean);
-  if(cylDates.length===0) return null;
-  const start = cylDates.slice().sort()[0];
-  const readingDates = readings.filter(function(r){return r.purchaseId===p.id;}).map(function(r){return r.dateLogged;});
-  const end = (readingDates.length ? readingDates : cylDates).slice().sort().slice(-1)[0];
-  const days = Math.max(0, Math.round((new Date(end) - new Date(start)) / 86400000));
-  return { start: start, end: end, days: days };
+  const autoStart = firstCylDate(p);
+  if(!autoStart && !p.periodStart) return null;
+  const start = p.periodStart || autoStart;
+  let end, ongoing = false;
+  if(p.periodEnd){ end = p.periodEnd; }
+  else {
+    const nextStarts = DATA.purchases.filter(function(o){ return o !== p; }).map(firstCylDate).filter(function(d){ return d && d > start; }).sort();
+    if(nextStarts.length){ end = addDaysISO(nextStarts[0], -1); }
+    else if(p.status === 'open'){ end = new Date().toISOString().slice(0,10); ongoing = true; }
+    else {
+      const rd = (readings||[]).filter(function(r){return r.purchaseId===p.id;}).map(function(r){return r.dateLogged;}).filter(Boolean).sort();
+      const cd = (p.cylinders||[]).map(function(c){return c.date;}).filter(Boolean).sort();
+      end = rd.length ? rd[rd.length-1] : cd[cd.length-1];
+    }
+  }
+  if(end < start) end = start;
+  const days = Math.round((new Date(end+'T00:00:00Z') - new Date(start+'T00:00:00Z')) / 86400000) + 1;
+  return { start: start, end: end, days: days, ongoing: ongoing, manual: !!(p.periodStart || p.periodEnd) };
 }
 
 function computeBilling(purchase, readings, method){
@@ -608,7 +626,7 @@ function viewDashboard(){
     const period = billingPeriod(p, DATA.readings);
     html += '<div class="purchase-row" data-purchase="'+p.id+'">'
       + '<div class="pr-top"><strong>'+p.id+'</strong><span class="status '+p.status+'">'+p.status+'</span></div>'
-      + '<div class="pr-meta">'+t.qty+' cylinder(s) \u00b7 '+fmtQty(t.kg)+' kg \u00b7 Tk '+fmtTk(t.cost)+(period?' \u00b7 '+period.days+' days so far':'')+' \u00b7 '+DATA.readings.filter(function(r){return r.purchaseId===p.id;}).length+' readings logged</div>'
+      + '<div class="pr-meta">'+t.qty+' cylinder(s) \u00b7 '+fmtQty(t.kg)+' kg \u00b7 Tk '+fmtTk(t.cost)+(period?' \u00b7 '+period.days+(period.ongoing?' days so far':' days'):'')+' \u00b7 '+DATA.readings.filter(function(r){return r.purchaseId===p.id;}).length+' readings logged</div>'
       + '</div>';
     if(EXPANDED_PURCHASE === p.id) html += renderPurchaseDetail(p);
   });
@@ -640,6 +658,9 @@ function renderPurchaseDetail(p){
         + '</div><button class="btn danger small" data-del-cyl="'+c.id+'" style="margin-bottom:10px;">Remove this cylinder purchase</button>';
     });
     html += '<button class="btn secondary small" data-add-cyl="1">+ Add another cylinder purchase</button>'
+      + '<div class="hint" style="margin-top:14px;">Billing period \u2014 leave blank for automatic (first purchase date \u2192 day before the next batch starts). Only fill in to override.</div>'
+      + '<div class="row2"><div><label>Period start</label><input type="date" id="epPeriodStart" value="'+(p.periodStart||'')+'"></div>'
+      + '<div><label>Period end</label><input type="date" id="epPeriodEnd" value="'+(p.periodEnd||'')+'"></div></div>'
       + '<label style="margin-top:14px;">Status</label><select id="epStatus"><option value="open" '+(p.status==='open'?'selected':'')+'>Open</option><option value="closed" '+(p.status==='closed'?'selected':'')+'>Closed</option></select>'
       + '<div class="rowbtns" style="margin-top:12px;"><button class="btn small" data-save-purchase="'+p.id+'">Save</button><button class="btn secondary small" data-cancel-edit-purchase="1">Cancel</button></div>'
       + '</div>';
@@ -795,7 +816,8 @@ function viewReadingForm(){
     + '<form id="readingForm">'
     + '<label>Flat</label><select name="flatId" id="flatSelect">'+activeFlats.map(function(f){return '<option value="'+f.id+'">'+f.id+(f.name?' \u2014 '+f.name:'')+'</option>';}).join('')+'</select>'
     + '<div class="row2"><div><label>Previous reading</label><input type="number" step="0.01" name="previous" id="prevInput" required></div>'
-    + '<div><label>Current reading</label><input type="number" step="0.01" name="current" required></div></div>'
+    + '<div><label>Current reading</label><input type="number" step="0.01" name="current" id="currInput" required></div></div>'
+    + '<div id="unitsPreview" class="subcard" style="margin-top:10px;display:none;"></div>'
     + '<label>Meter photo (optional but recommended)</label><input type="file" accept="image/*" capture="environment" name="photo">'
     + '<button class="btn" type="submit">Save reading</button></form></div>';
   return html;
@@ -806,6 +828,28 @@ function autofillPrevious(){
   const flatId = flatSelect.value;
   const last = DATA.readings.filter(function(r){return r.flatId===flatId;}).sort(function(a,b){return b.dateLogged.localeCompare(a.dateLogged);})[0];
   document.getElementById('prevInput').value = last ? last.current : 0;
+  updateUnitsPreview();
+}
+function updateUnitsPreview(){
+  const box = document.getElementById('unitsPreview');
+  const prevEl = document.getElementById('prevInput'), currEl = document.getElementById('currInput'), flatSel = document.getElementById('flatSelect');
+  if(!box || !prevEl || !currEl) return;
+  if(currEl.value === ''){ box.style.display = 'none'; return; }
+  const units = Math.round((parseFloat(currEl.value) - parseFloat(prevEl.value||0)) * 100) / 100;
+  const last = flatSel ? DATA.readings.filter(function(r){return r.flatId===flatSel.value;}).sort(function(a,b){return b.dateLogged.localeCompare(a.dateLogged);})[0] : null;
+  const lastUnits = last ? Math.round((last.current - last.previous) * 100) / 100 : null;
+  let note = '', color = 'var(--ink)';
+  if(units < 0){ note = 'Current reading is lower than previous \u2014 please re-check the meter.'; color = 'var(--red)'; }
+  else if(lastUnits && lastUnits > 0){
+    const pct = Math.round((units - lastUnits) / lastUnits * 100);
+    const limit = (DATA.settings && DATA.settings.abnormalThresholdPct) || 25;
+    note = 'Last cycle: ' + fmtQty(lastUnits) + ' units (' + (pct >= 0 ? '+' : '') + pct + '%)';
+    if(pct > limit) { note += ' \u2014 noticeably higher than usual, double-check before saving.'; color = 'var(--red)'; }
+  }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="font-size:12px;color:var(--ink-soft);">Units used this cycle</div>'
+    + '<div style="font-size:22px;font-weight:600;color:'+color+';">' + fmtQty(units) + ' units</div>'
+    + (note ? '<div class="hint" style="color:'+color+';">' + note + '</div>' : '');
 }
 
 function viewHistory(){
@@ -1043,6 +1087,8 @@ function bindMainEvents(){
       const p = DATA.purchases.find(function(x){return x.id===b.dataset.savePurchase;});
       p.cylinders = EDIT_CYLINDERS.map(function(c){ return { id:c.id, date:c.date, qty: Math.max(1, parseInt(c.qty,10)||1), kg:parseFloat(c.kg)||0, cost:parseFloat(c.cost)||0, hasPhoto: !!c.hasPhoto }; }).filter(function(c){ return c.kg>0 || c.cost>0; });
       p.status = document.getElementById('epStatus').value;
+      p.periodStart = document.getElementById('epPeriodStart').value || null;
+      p.periodEnd = document.getElementById('epPeriodEnd').value || null;
       EDIT_PURCHASE_ID = null; EDIT_CYLINDERS = [];
       await saveStore('lpg-data', true, DATA);
       toast('Batch updated');
@@ -1126,6 +1172,7 @@ function bindMainEvents(){
 
   const fs = document.getElementById('flatSelect');
   if(fs){ fs.onchange = autofillPrevious; autofillPrevious(); }
+  ['prevInput','currInput'].forEach(function(id){ const el = document.getElementById(id); if(el) el.oninput = updateUnitsPreview; });
   const switchLink = document.querySelector('[data-switch-batch]');
   if(switchLink) switchLink.onclick = function(){ SHOW_BATCH_SWITCH = !SHOW_BATCH_SWITCH; renderMain(); };
   const bss = document.getElementById('batchSwitchSelect');
