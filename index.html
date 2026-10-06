@@ -131,6 +131,7 @@
       <h1>LPG <span>Ledger</span></h1>
       <div class="who">
         <span class="roletag" id="roleTag">ADMIN</span>
+        <button id="pwBtn" class="btn secondary small" style="margin-top:0;display:none;">Change password</button>
         <button id="logoutBtn" class="btn secondary small" style="margin-top:0;display:none;">Log out</button>
       </div>
     </div>
@@ -240,7 +241,9 @@ let SET_RATE_FOR = null;
 let GRAPH_RANGE = '6'; // 6 | 12 | all
 
 let AUTH_STATUS = 'checking'; // checking | nobackend | signedout | pending | ready
-let AUTH_MODE = 'login'; // login | signup
+let AUTH_MODE = 'login'; // login | signup | forgot
+let PW_MODE = null; // null | 'recovery' (came from email link) | 'change' (signed-in user)
+function appUrl(){ return window.location.origin + window.location.pathname; }
 let PROFILES = [];
 
 const ROLE_LABEL = { admin:'Admin', purchase_manager:'Purchase manager', meter_reader:'Meter reader', resident:'Resident' };
@@ -431,11 +434,15 @@ function renderShell(){
   if(AUTH_STATUS !== 'ready'){
     roleTag.style.display = 'none';
     logoutBtn.style.display = 'none';
+    document.getElementById('pwBtn').style.display = 'none';
     tabsEl.innerHTML = '';
     return;
   }
   roleTag.style.display = '';
   logoutBtn.style.display = '';
+  const pwBtn = document.getElementById('pwBtn');
+  pwBtn.style.display = IS_OFFLINE ? 'none' : '';
+  pwBtn.onclick = function(){ PW_MODE = 'change'; renderMain(); };
   roleTag.textContent = ROLE_LABEL[CURRENT_USER.role].toUpperCase();
   logoutBtn.onclick = async function(){ await sb.auth.signOut(); AUTH_STATUS='signedout'; CURRENT_USER=null; renderAll(); };
   const visibleTabs = TABS.filter(function(t){ return t.roles.includes(CURRENT_USER.role); });
@@ -452,6 +459,7 @@ function renderMain(){
   const m = document.getElementById('main');
   if(AUTH_STATUS === 'checking'){ m.innerHTML = '<div class="card"><div class="empty">Loading\u2026</div></div>'; return; }
   if(AUTH_STATUS === 'nobackend'){ m.innerHTML = '<div class="card"><div class="empty">Supabase is not connected yet \u2014 add your project URL &amp; key in the code.</div></div>'; return; }
+  if(PW_MODE){ m.innerHTML = viewSetPassword(); bindPasswordEvents(); return; }
   if(AUTH_STATUS === 'signedout'){ m.innerHTML = viewAuth(); bindAuthEvents(); return; }
   if(AUTH_STATUS === 'pending'){ m.innerHTML = viewPending(); bindAuthEvents(); return; }
   if(AUTH_STATUS === 'offline'){ m.innerHTML = viewOfflineNoCache(); return; }
@@ -465,6 +473,14 @@ function renderMain(){
 function renderAll(){ renderShell(); renderMain(); updateOfflineBanner(); }
 
 function viewAuth(){
+  if(AUTH_MODE === 'forgot'){
+    return '<div class="card authcard"><h2>Reset your password</h2>'
+      + '<p class="sub">Enter the email you signed up with. We\u2019ll email you a link to set a new password.</p>'
+      + '<form id="forgotForm"><label>Email</label><input type="email" name="email" required>'
+      + '<button class="btn" type="submit" style="width:100%;justify-content:center;">Send reset link</button></form>'
+      + '<p class="hint" style="margin-top:14px;text-align:center;"><a id="backToLogin">Back to sign in</a></p>'
+      + '<div id="authMsg" class="hint" style="margin-top:8px;text-align:center;"></div></div>';
+  }
   const signup = AUTH_MODE === 'signup';
   return '<div class="card authcard"><h2>'+(signup?'Request access':'Sign in')+'</h2>'
     + '<p class="sub">'+(signup?'Create an account, then an admin approves it and assigns your role before you can use anything.':'Sign in to LPG Ledger.')+'</p>'
@@ -474,8 +490,38 @@ function viewAuth(){
     + '<label>Password</label><input type="password" name="password" required minlength="6">'
     + '<button class="btn" type="submit" style="width:100%;justify-content:center;">'+(signup?'Create account':'Sign in')+'</button>'
     + '</form>'
+    + (signup ? '' : '<p class="hint" style="margin-top:10px;text-align:center;"><a id="forgotLink">Forgot password?</a></p>')
     + '<p class="hint" style="margin-top:14px;text-align:center;">'+(signup?'Already have an account? ':"Don't have access yet? ")+'<a id="authToggle">'+(signup?'Sign in':'Request access')+'</a></p>'
     + '<div id="authMsg" class="hint" style="margin-top:8px;text-align:center;"></div></div>';
+}
+function viewSetPassword(){
+  const recovery = PW_MODE === 'recovery';
+  return '<div class="card authcard"><h2>'+(recovery?'Set a new password':'Change password')+'</h2>'
+    + '<p class="sub">'+(recovery?'Choose a new password for your account.':'Choose a new password. You\u2019ll use it next time you sign in.')+'</p>'
+    + '<form id="pwForm"><label>New password</label><input type="password" name="pw1" required minlength="6">'
+    + '<label>Confirm new password</label><input type="password" name="pw2" required minlength="6">'
+    + '<button class="btn" type="submit" style="width:100%;justify-content:center;">Save new password</button></form>'
+    + (recovery ? '' : '<p class="hint" style="margin-top:14px;text-align:center;"><a id="pwCancel">Cancel</a></p>')
+    + '<div id="pwMsg" class="hint" style="margin-top:8px;text-align:center;"></div></div>';
+}
+function bindPasswordEvents(){
+  const c = document.getElementById('pwCancel');
+  if(c) c.onclick = function(){ PW_MODE = null; renderAll(); };
+  const f = document.getElementById('pwForm');
+  if(f) f.onsubmit = async function(e){
+    e.preventDefault();
+    const fd = new FormData(f), msg = document.getElementById('pwMsg');
+    if(fd.get('pw1') !== fd.get('pw2')){ msg.textContent = 'The two passwords don\u2019t match.'; return; }
+    msg.textContent = 'Saving\u2026';
+    try{
+      const res = await sb.auth.updateUser({ password: fd.get('pw1') });
+      if(res.error){ msg.textContent = res.error.message; return; }
+      PW_MODE = null;
+      if(window.location.hash) history.replaceState(null, '', appUrl());
+      toast('Password updated');
+      await checkSession();
+    }catch(err){ msg.textContent = 'Something went wrong. Try again.'; }
+  };
 }
 function viewOfflineNoCache(){
   return '<div class="card authcard" style="text-align:center;"><h2>You\u2019re offline</h2>'
@@ -487,6 +533,22 @@ function viewPending(){
     + '<button class="btn secondary" id="signOutBtn">Sign out</button></div>';
 }
 function bindAuthEvents(){
+  const fl = document.getElementById('forgotLink');
+  if(fl) fl.onclick = function(){ AUTH_MODE = 'forgot'; renderMain(); };
+  const bl = document.getElementById('backToLogin');
+  if(bl) bl.onclick = function(){ AUTH_MODE = 'login'; renderMain(); };
+  const ff = document.getElementById('forgotForm');
+  if(ff) ff.onsubmit = async function(e){
+    e.preventDefault();
+    const msg = document.getElementById('authMsg');
+    msg.textContent = 'Please wait\u2026';
+    try{
+      const res = await sb.auth.resetPasswordForEmail(new FormData(ff).get('email'), { redirectTo: appUrl() });
+      if(res.error){ msg.textContent = res.error.message; return; }
+      msg.textContent = 'If that email has an account, a reset link is on its way. Check your inbox (and spam folder).';
+      ff.reset();
+    }catch(err){ msg.textContent = 'Something went wrong. Try again.'; }
+  };
   const t = document.getElementById('authToggle');
   if(t) t.onclick = function(){ AUTH_MODE = AUTH_MODE==='signup' ? 'login' : 'signup'; renderMain(); };
   const f = document.getElementById('authForm');
@@ -1059,6 +1121,7 @@ function viewAdmin(){
     html += '<div class="user-row"><div class="ui"><b>'+u.name+'</b><span>'+u.email+(u.role==='pending'?' \u00b7 awaiting approval':'')+(u.role==='resident'&&u.flat_id?' \u00b7 flat '+u.flat_id:'')+'</span></div>'
       + '<select data-profile="'+u.id+'" class="roleSelect"><option value="pending" '+(u.role==='pending'?'selected':'')+'>Pending</option>'+Object.keys(ROLE_LABEL).map(function(r){return '<option value="'+r+'" '+(u.role===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>';}).join('')+'</select>'
       + (u.role==='resident' ? '<select data-profile-flat="'+u.id+'"><option value="">No flat</option>'+sortedFlats().map(function(fl){return '<option value="'+fl.id+'" '+(u.flat_id===fl.id?'selected':'')+'>'+fl.id+'</option>';}).join('')+'</select>' : '')
+      + (u.email ? '<button class="btn secondary small" data-reset-email="'+u.email+'">Send reset link</button>' : '')
       + (u.id!==CURRENT_USER.id ? '<button class="btn danger small" data-remove-profile="'+u.id+'">Remove</button>' : '')
       + '</div>';
   });
@@ -1306,6 +1369,14 @@ function bindMainEvents(){
       toast('Flat assigned'); await loadProfiles();
     };
   });
+  document.querySelectorAll('[data-reset-email]').forEach(function(btn){
+    btn.onclick = async function(){
+      const email = btn.dataset.resetEmail;
+      if(!confirm('Email a password reset link to '+email+'?')) return;
+      const res = await sb.auth.resetPasswordForEmail(email, { redirectTo: appUrl() });
+      toast(res.error ? ('Could not send: '+res.error.message) : ('Reset link sent to '+email));
+    };
+  });
   document.querySelectorAll('[data-remove-profile]').forEach(function(btn){
     btn.onclick = async function(){
       if(!confirm("Remove this person's access? They can request access again later.")) return;
@@ -1512,8 +1583,10 @@ function printReport(purchaseId, method){
 
 async function boot(){
   if(!sb){ AUTH_STATUS = 'nobackend'; renderAll(); return; }
+  if(/type=recovery/.test(window.location.hash)) PW_MODE = 'recovery';
   sb.auth.onAuthStateChange(function(event){
-    if(event === 'SIGNED_OUT'){ AUTH_STATUS='signedout'; CURRENT_USER=null; renderAll(); }
+    if(event === 'PASSWORD_RECOVERY'){ PW_MODE = 'recovery'; renderAll(); }
+    if(event === 'SIGNED_OUT'){ AUTH_STATUS='signedout'; CURRENT_USER=null; PW_MODE=null; renderAll(); }
   });
   await checkSession();
 }
