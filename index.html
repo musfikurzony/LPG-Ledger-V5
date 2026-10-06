@@ -62,6 +62,9 @@
   .status{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:5px;}
   .status.open{background:var(--flame-100);color:var(--flame-800);}
   .status.closed{background:var(--teal-100);color:var(--teal-800);}
+  .paytag{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;display:inline-block;white-space:nowrap;}
+  .paytag.paid{background:var(--teal-100);color:var(--teal-800);}
+  .paytag.unpaid{background:var(--red-100);color:var(--red);}
   .pr-meta{font-size:12px;color:var(--ink-soft);margin-top:4px;font-family:var(--mono);}
   table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;}
   th{text-align:left;font-weight:500;color:var(--ink-soft);font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid var(--line);}
@@ -342,13 +345,30 @@ function flatCycles(flatId){
       purchaseId: p.id, seq: batchSeq(p.id), period: billingPeriod(p, DATA.readings),
       previous: row.previous, current: row.current, units: row.units,
       kg: row.units * bActual.rate, rate: bActual.rate, pricePerKg: bActual.pricePerKg, bill: row.bill,
-      manualBilled: manualBilled, manual: manual
+      manualBilled: manualBilled, manual: manual,
+      paid: !!row.paid, paidDate: row.paidDate || null
     });
   });
   cycles.sort(function(a,b){ return a.seq - b.seq; });
   return cycles;
 }
 function avg(arr){ return arr.length ? arr.reduce(function(s,v){return s+v;},0)/arr.length : 0; }
+// The method the bill was actually issued with: manual if a manual rate is set, otherwise actual.
+function issuedMethod(p){ return (p.manualRate != null && p.manualRate !== '' && p.manualRate > 0) ? 'manual' : 'actual'; }
+// Users + payment summary for one billing cycle.
+function cycleStats(p){
+  const b = computeBilling(p, DATA.readings, issuedMethod(p));
+  const users = {};
+  b.rows.forEach(function(r){ if(r.units > 0) users[r.flatId] = true; });
+  const billable = b.rows.filter(function(r){ return r.bill > 0; });
+  const paidRows = billable.filter(function(r){ return r.paid; });
+  const collected = paidRows.reduce(function(s,r){ return s + (r.paidAmount != null ? r.paidAmount : r.bill); }, 0);
+  return {
+    users: Object.keys(users).length, totalFlats: DATA.flats.length,
+    billCount: billable.length, paidCount: paidRows.length,
+    billed: b.totalBill, collected: collected, due: Math.max(0, b.totalBill - collected)
+  };
+}
 function computeReconciliation(p, readings){
   const totals = cylinderTotals(p);
   const actual = computeBilling(p, readings, 'actual');
@@ -392,6 +412,7 @@ function can(action){
   if(role === 'admin') return true;
   if(action === 'addPurchase') return role === 'purchase_manager';
   if(action === 'addReading') return role === 'meter_reader';
+  if(action === 'collect') return role === 'purchase_manager';
   return false;
 }
 
@@ -597,6 +618,14 @@ function buildingOverview(){
     + '<div class="stat"><div class="v">'+flatsPending+'</div><div class="l">Pending</div></div>'
     + '<div class="stat"><div class="v">'+fmtQty(avgPerFlat)+' kg</div><div class="l">Avg / flat</div></div>'
     + '</div>';
+  const cs = cycleStats(current);
+  const allDue = sortedAll.reduce(function(sum,p){ return sum + cycleStats(p).due; }, 0);
+  const allUnpaid = sortedAll.reduce(function(n,p){ const c = cycleStats(p); return n + (c.billCount - c.paidCount); }, 0);
+  html += '<div class="stat-grid-3" style="margin-top:8px;">'
+    + '<div class="stat"><div class="v">'+cs.users+' / '+cs.totalFlats+'</div><div class="l">Flats using LPG</div></div>'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(cs.collected)+'</div><div class="l">Collected this cycle</div></div>'
+    + '<div class="stat"><div class="v" style="color:'+(allDue>0?'var(--red)':'var(--teal)')+';">Tk '+fmtTk(allDue)+'</div><div class="l">Unpaid, all cycles ('+allUnpaid+' bills)</div></div>'
+    + '</div>';
 
   const chartCycles = sortedAll.slice(-8);
   if(chartCycles.length>1){
@@ -604,6 +633,8 @@ function buildingOverview(){
     const labels = chartCycles.map(function(p){ return 'C'+(sortedAll.indexOf(p)+1); });
     html += '<div class="hint" style="margin-top:12px;">Building-wide consumption by cycle (actual method):</div>';
     html += barChart(values, labels, 'var(--teal)');
+    html += '<div class="hint" style="margin-top:12px;">Flats using LPG by cycle:</div>';
+    html += barChart(chartCycles.map(function(p){ return cycleStats(p).users; }), labels, 'var(--flame)');
     html += '<div class="chart-legend">'+chartCycles.map(function(p){ const period=billingPeriod(p,DATA.readings); return 'C'+(sortedAll.indexOf(p)+1)+' = '+p.id+(period?' ('+period.start+' to '+period.end+')':''); }).join(' \u00b7 ')+'</div>';
   }
   html += '</div>';
@@ -626,7 +657,8 @@ function viewDashboard(){
     const period = billingPeriod(p, DATA.readings);
     html += '<div class="purchase-row" data-purchase="'+p.id+'">'
       + '<div class="pr-top"><strong>'+p.id+'</strong><span class="status '+p.status+'">'+p.status+'</span></div>'
-      + '<div class="pr-meta">'+t.qty+' cylinder(s) \u00b7 '+fmtQty(t.kg)+' kg \u00b7 Tk '+fmtTk(t.cost)+(period?' \u00b7 '+period.days+(period.ongoing?' days so far':' days'):'')+' \u00b7 '+DATA.readings.filter(function(r){return r.purchaseId===p.id;}).length+' readings logged</div>'
+      + '<div class="pr-meta">'+t.qty+' cylinder(s) \u00b7 '+fmtQty(t.kg)+' kg \u00b7 Tk '+fmtTk(t.cost)+(period?' \u00b7 '+period.days+(period.ongoing?' days so far':' days'):'')+' \u00b7 '+DATA.readings.filter(function(r){return r.purchaseId===p.id;}).length+' readings logged'
+      + (function(){ const cs = cycleStats(p); return cs.billCount ? ' \u00b7 '+cs.users+' users \u00b7 '+cs.paidCount+'/'+cs.billCount+' paid' : ''; })()+'</div>'
       + '</div>';
     if(EXPANDED_PURCHASE === p.id) html += renderPurchaseDetail(p);
   });
@@ -705,18 +737,36 @@ function renderPurchaseDetail(p){
   });
   html += '</tbody></table></div>';
 
-  html += '<div class="tablewrap"><table><thead><tr><th>Flat</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">Bill (Tk)</th><th></th></tr></thead><tbody>';
+  const pcs = cycleStats(p);
+  const canCollect = can('collect');
+  html += '<div class="hint" style="margin:14px 0 4px;">Users & collection (amounts use the issued bill \u2014 '+(issuedMethod(p)==='manual'?'manual rate':'actual method')+'):</div>';
+  html += '<div class="stat-grid-3">'
+    + '<div class="stat"><div class="v">'+pcs.users+' / '+pcs.totalFlats+'</div><div class="l">Flats using LPG</div></div>'
+    + '<div class="stat"><div class="v">'+pcs.paidCount+' / '+pcs.billCount+'</div><div class="l">Bills paid</div></div>'
+    + '<div class="stat"><div class="v">Tk '+fmtTk(pcs.collected)+'</div><div class="l">Collected of Tk '+fmtTk(pcs.billed)+'</div></div>'
+    + '</div>';
+  const issuedB = computeBilling(p, DATA.readings, issuedMethod(p));
+  html += '<div class="tablewrap"><table><thead><tr><th>Flat</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">Bill (Tk)</th><th>Status</th><th></th></tr></thead><tbody>';
   b.rows.sort(function(a,c){return naturalFlatCompare(a.flatId,c.flatId);}).forEach(function(r){
     const f = flatById(r.flatId);
     const phone = f && f.phone;
     html += '<tr><td class="flat">'+r.flatId+(f&&f.name?' <span style="color:var(--ink-soft);font-weight:400;">'+f.name+'</span>':'')+'</td>'
       + '<td class="num">'+fmtQty(r.previous)+'</td><td class="num">'+fmtQty(r.current)+'</td><td class="num">'+fmtQty(r.units)+'</td><td class="num">'+fmtTk(r.bill)+'</td>'
+      + '<td>'+(!(r.bill > 0) ? '\u2014' : r.paid ? '<span class="paytag paid">Paid'+(r.paidDate?' '+shortDate(r.paidDate):'')+'</span>' : '<span class="paytag unpaid">Unpaid</span>')+'</td>'
       + '<td class="num">';
+    if(canCollect && r.bill > 0){
+      if(r.paid) html += '<button class="btn small secondary" data-unpay="'+r.id+'">Undo</button> ';
+      else {
+        const ib = issuedB.rows.find(function(x){return x.id===r.id;});
+        html += '<button class="btn small" data-pay="'+r.id+'" data-amount="'+(ib?ib.bill:r.bill)+'">Mark paid</button> ';
+        if(phone) html += '<button class="btn small secondary" data-remind="'+r.id+'" data-purchase="'+p.id+'">Remind</button> ';
+      }
+    }
     if(phone) html += '<button class="btn small secondary" data-wa="'+r.id+'" data-purchase="'+p.id+'">WA</button> ';
     if(isAdmin) html += '<button class="btn small secondary" data-edit-reading="'+r.id+'">Edit</button>';
     html += '</td></tr>';
     if(EDIT_READING_ID === r.id){
-      html += '<tr><td colspan="6"><div class="inline-edit">'
+      html += '<tr><td colspan="7"><div class="inline-edit">'
         + '<div class="row3"><div><label>Flat</label><select id="erFlat">'+sortedFlats().map(function(fl){return '<option value="'+fl.id+'" '+(fl.id===r.flatId?'selected':'')+'>'+fl.id+'</option>';}).join('')+'</select></div>'
         + '<div><label>Previous</label><input type="number" step="0.01" id="erPrev" value="'+r.previous+'"></div>'
         + '<div><label>Current</label><input type="number" step="0.01" id="erCurr" value="'+r.current+'"></div></div>'
@@ -726,7 +776,7 @@ function renderPurchaseDetail(p){
         + '</div></td></tr>';
     }
   });
-  html += '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">'+fmtQty(b.totalUnits)+'</td><td class="num">'+fmtTk(b.totalBill)+'</td><td></td></tr></tfoot></table></div>';
+  html += '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">'+fmtQty(b.totalUnits)+'</td><td class="num">'+fmtTk(b.totalBill)+'</td><td></td><td></td></tr></tfoot></table></div>';
 
   const rec = computeReconciliation(p, DATA.readings);
   html += '<div class="hint" style="margin:16px 0 6px;">Purchase vs. consumption reconciliation:</div>';
@@ -882,7 +932,7 @@ function viewHistory(){
   html += '<div class="card"><h2>'+HISTORY_FLAT+(f&&f.name?' \u2014 '+f.name:'')+'</h2><p class="sub">'+cycleLabel(latest.period, cycles.length-1)+'</p>';
   html += '<div class="row2">'
     + '<div class="subcard" style="text-align:center;"><div class="bignum">'+fmtQty(latest.kg)+' kg</div><div class="bignum-l">This cycle consumed</div></div>'
-    + '<div class="subcard" style="text-align:center;"><div class="bignum">Tk '+fmtTk(latestBill)+'</div><div class="bignum-l">This cycle bill'+(latest.manualBilled?' (manual)':'')+'</div></div>'
+    + '<div class="subcard" style="text-align:center;"><div class="bignum">Tk '+fmtTk(latestBill)+'</div><div class="bignum-l">This cycle bill'+(latest.manualBilled?' (manual)':'')+'</div><div style="margin-top:6px;">'+(latest.paid?'<span class="paytag paid">Paid'+(latest.paidDate?' '+shortDate(latest.paidDate):'')+'</span>':'<span class="paytag unpaid">Unpaid</span>')+'</div></div>'
     + '</div>';
   if(latest.manualBilled && latest.manual){
     html += '<div class="hint" style="margin-top:8px;">This cycle was billed at the manual rate ('+latest.manual.rate.toFixed(2)+' kg/unit) \u2014 actual-method reference: Tk '+fmtTk(latest.bill)+'.</div>';
@@ -959,11 +1009,11 @@ function viewHistory(){
     + '<div class="chart-legend">'+legend+'</div></div>';
 
   html += '<div class="card"><h2>Billing history</h2><p class="sub">Complete calculation chain for every cycle. \u201cActual Bill\u201d is the reconciliation figure; \u201cManual Bill\u201d shows what was actually issued for cycles billed at a fixed rate.</p>'
-    + '<div class="tablewrap"><table><thead><tr><th>Cycle</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">KG</th><th class="num">Rate/kg</th><th class="num">Actual Bill</th><th class="num">Manual Bill</th></tr></thead><tbody>'
+    + '<div class="tablewrap"><table><thead><tr><th>Cycle</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">KG</th><th class="num">Rate/kg</th><th class="num">Actual Bill</th><th class="num">Manual Bill</th><th>Status</th></tr></thead><tbody>'
     + cycles.slice().reverse().map(function(c){
         const idx = cycles.indexOf(c);
         const manualCell = (c.manualBilled && c.manual) ? 'Tk '+fmtTk(c.manual.bill) : '\u2014';
-        return '<tr><td>'+cycleLabel(c.period, idx)+'</td><td class="num">'+fmtQty(c.previous)+'</td><td class="num">'+fmtQty(c.current)+'</td><td class="num">'+fmtQty(c.units)+'</td><td class="num">'+fmtQty(c.kg)+'</td><td class="num">Tk '+fmtTk(c.pricePerKg)+'</td><td class="num">Tk '+fmtTk(c.bill)+'</td><td class="num">'+manualCell+'</td></tr>';
+        return '<tr><td>'+cycleLabel(c.period, idx)+'</td><td class="num">'+fmtQty(c.previous)+'</td><td class="num">'+fmtQty(c.current)+'</td><td class="num">'+fmtQty(c.units)+'</td><td class="num">'+fmtQty(c.kg)+'</td><td class="num">Tk '+fmtTk(c.pricePerKg)+'</td><td class="num">Tk '+fmtTk(c.bill)+'</td><td class="num">'+manualCell+'</td><td>'+(!(c.bill > 0) ? '\u2014' : c.paid?'<span class="paytag paid">Paid</span>':'<span class="paytag unpaid">Unpaid</span>')+'</td></tr>';
       }).join('')
     + '</tbody></table></div></div>';
 
@@ -1138,6 +1188,33 @@ function bindMainEvents(){
   });
 
   document.querySelectorAll('[data-print]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); printReport(b.dataset.print, REPORT_METHOD[b.dataset.print]||'actual'); }; });
+  document.querySelectorAll('[data-pay]').forEach(function(b){
+    b.onclick = async function(e){
+      e.stopPropagation();
+      const r = DATA.readings.find(function(x){return x.id===b.dataset.pay;});
+      if(!r) return;
+      const amount = parseFloat(b.dataset.amount) || 0;
+      if(!confirm('Mark flat '+r.flatId+' as paid (Tk '+fmtTk(amount)+')?')) return;
+      r.paid = true; r.paidDate = new Date().toISOString().slice(0,10); r.paidAmount = Math.round(amount*100)/100; r.paidBy = CURRENT_USER.name;
+      await saveStore('lpg-data', true, DATA);
+      toast(r.flatId+' marked as paid');
+      renderMain();
+    };
+  });
+  document.querySelectorAll('[data-unpay]').forEach(function(b){
+    b.onclick = async function(e){
+      e.stopPropagation();
+      const r = DATA.readings.find(function(x){return x.id===b.dataset.unpay;});
+      if(!r || !confirm('Mark flat '+r.flatId+' as unpaid again?')) return;
+      r.paid = false; delete r.paidDate; delete r.paidAmount; delete r.paidBy;
+      await saveStore('lpg-data', true, DATA);
+      toast(r.flatId+' marked as unpaid');
+      renderMain();
+    };
+  });
+  document.querySelectorAll('[data-remind]').forEach(function(b){
+    b.onclick = function(e){ e.stopPropagation(); const link = waReminderLink(b.dataset.remind, b.dataset.purchase); if(link) window.open(link,'_blank'); };
+  });
   document.querySelectorAll('[data-wa]').forEach(function(b){
     b.onclick = function(e){ e.stopPropagation(); const link = waLink(b.dataset.wa, b.dataset.purchase, REPORT_METHOD[b.dataset.purchase]||'actual'); if(link) window.open(link,'_blank'); };
   });
@@ -1336,6 +1413,23 @@ function waLink(readingId, purchaseId, method){
   return 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
 }
 
+function waReminderLink(readingId, purchaseId){
+  const p = DATA.purchases.find(function(x){return x.id===purchaseId;});
+  const b = computeBilling(p, DATA.readings, issuedMethod(p));
+  const row = b.rows.find(function(r){return r.id===readingId;});
+  if(!row) return null;
+  const f = flatById(row.flatId);
+  const phone = ((f && f.phone) || '').replace(/[^0-9]/g,'');
+  if(!phone) return null;
+  const period = billingPeriod(p, DATA.readings);
+  const greeting = f.name ? ('Dear '+f.name+' (Flat '+f.id+'),') : ('Dear Flat '+f.id+' User,');
+  const msg = greeting+'\nThis is a friendly reminder that your LPG bill for '+p.id
+    + (period ? ' ('+period.start+' to '+period.end+')' : '')+' is still unpaid.\n'
+    + 'Units Used: '+fmtQty(row.units)+'\nBill Amount: '+fmtTk(row.bill)+' TK.\n'
+    + 'Please pay at your earliest convenience. If you have already paid, kindly ignore this message.\nThank you!';
+  return 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
+}
+
 const OFFICE_ADDRESS = 'House 147, Road 2, Block A, Pallabi, Mirpur 12, Dhaka';
 
 function addAddressFooter(doc){
@@ -1376,7 +1470,7 @@ function printReport(purchaseId, method){
   y += 20;
 
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(85,85,85);
-  const metaLine = (period ? period.start+' to '+period.end+' ('+period.days+' days) \u00b7 ' : '')+cylinderTotals(p).qty+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg \u00b7 Tk '+fmtTk(b.totalCost)+' \u00b7 blended price/kg Tk '+fmtTk(b.pricePerKg);
+  const metaLine = (period ? period.start+' to '+period.end+' ('+period.days+' days) \u00b7 ' : '')+cylinderTotals(p).qty+' cylinder(s) \u00b7 '+fmtQty(b.totalKg)+' kg \u00b7 Tk '+fmtTk(b.totalCost)+' \u00b7 blended price/kg Tk '+fmtTk(b.pricePerKg)+' \u00b7 '+cycleStats(p).users+' of '+DATA.flats.length+' flats using LPG';
   doc.text(metaLine, margin, y);
   y += 16;
 
