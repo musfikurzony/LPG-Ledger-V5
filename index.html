@@ -242,7 +242,7 @@ let GRAPH_RANGE = '6'; // 6 | 12 | all
 
 let AUTH_STATUS = 'checking'; // checking | nobackend | signedout | pending | ready
 let AUTH_MODE = 'login'; // login | signup | forgot
-let PW_MODE = null; // null | 'recovery' (came from email link) | 'change' (signed-in user)
+let PW_MODE = null; // null | 'recovery' (email link) | 'change' (signed-in user) | 'forced' (admin set a temporary password)
 function appUrl(){ return window.location.origin + window.location.pathname; }
 let PROFILES = [];
 
@@ -474,12 +474,9 @@ function renderAll(){ renderShell(); renderMain(); updateOfflineBanner(); }
 
 function viewAuth(){
   if(AUTH_MODE === 'forgot'){
-    return '<div class="card authcard"><h2>Reset your password</h2>'
-      + '<p class="sub">Enter the email you signed up with. We\u2019ll email you a link to set a new password.</p>'
-      + '<form id="forgotForm"><label>Email</label><input type="email" name="email" required>'
-      + '<button class="btn" type="submit" style="width:100%;justify-content:center;">Send reset link</button></form>'
-      + '<p class="hint" style="margin-top:14px;text-align:center;"><a id="backToLogin">Back to sign in</a></p>'
-      + '<div id="authMsg" class="hint" style="margin-top:8px;text-align:center;"></div></div>';
+    return '<div class="card authcard" style="text-align:center;"><h2>Forgot your password?</h2>'
+      + '<p class="sub">Please contact the building admin and ask them to reset it. They will give you a temporary password \u2014 sign in with it, and the app will ask you to choose your own new password straight away.</p>'
+      + '<p class="hint" style="margin-top:14px;"><a id="backToLogin">Back to sign in</a></p></div>';
   }
   const signup = AUTH_MODE === 'signup';
   return '<div class="card authcard"><h2>'+(signup?'Request access':'Sign in')+'</h2>'
@@ -495,13 +492,13 @@ function viewAuth(){
     + '<div id="authMsg" class="hint" style="margin-top:8px;text-align:center;"></div></div>';
 }
 function viewSetPassword(){
-  const recovery = PW_MODE === 'recovery';
-  return '<div class="card authcard"><h2>'+(recovery?'Set a new password':'Change password')+'</h2>'
-    + '<p class="sub">'+(recovery?'Choose a new password for your account.':'Choose a new password. You\u2019ll use it next time you sign in.')+'</p>'
+  const recovery = PW_MODE === 'recovery', forced = PW_MODE === 'forced';
+  return '<div class="card authcard"><h2>'+(forced?'Choose your own password':recovery?'Set a new password':'Change password')+'</h2>'
+    + '<p class="sub">'+(forced?'You signed in with a temporary password from the admin. Please choose your own password to continue.':recovery?'Choose a new password for your account.':'Choose a new password. You\u2019ll use it next time you sign in.')+'</p>'
     + '<form id="pwForm"><label>New password</label><input type="password" name="pw1" required minlength="6">'
     + '<label>Confirm new password</label><input type="password" name="pw2" required minlength="6">'
     + '<button class="btn" type="submit" style="width:100%;justify-content:center;">Save new password</button></form>'
-    + (recovery ? '' : '<p class="hint" style="margin-top:14px;text-align:center;"><a id="pwCancel">Cancel</a></p>')
+    + ((recovery || forced) ? '' : '<p class="hint" style="margin-top:14px;text-align:center;"><a id="pwCancel">Cancel</a></p>')
     + '<div id="pwMsg" class="hint" style="margin-top:8px;text-align:center;"></div></div>';
 }
 function bindPasswordEvents(){
@@ -516,6 +513,7 @@ function bindPasswordEvents(){
     try{
       const res = await sb.auth.updateUser({ password: fd.get('pw1') });
       if(res.error){ msg.textContent = res.error.message; return; }
+      if(PW_MODE === 'forced'){ try{ await sb.rpc('clear_must_change_password'); }catch(e){} }
       PW_MODE = null;
       if(window.location.hash) history.replaceState(null, '', appUrl());
       toast('Password updated');
@@ -637,6 +635,9 @@ async function checkSession(){
   }
   normalizeData();
   if(CURRENT_USER.role === 'resident' && CURRENT_USER.flat_id) HISTORY_FLAT = CURRENT_USER.flat_id;
+  if(!USING_CACHED_DATA && !PW_MODE){
+    try{ const mc = await sb.rpc('my_must_change_password'); if(!mc.error && mc.data === true) PW_MODE = 'forced'; }catch(e){}
+  }
   renderAll();
 }
 function normalizeData(){
@@ -1121,7 +1122,7 @@ function viewAdmin(){
     html += '<div class="user-row"><div class="ui"><b>'+u.name+'</b><span>'+u.email+(u.role==='pending'?' \u00b7 awaiting approval':'')+(u.role==='resident'&&u.flat_id?' \u00b7 flat '+u.flat_id:'')+'</span></div>'
       + '<select data-profile="'+u.id+'" class="roleSelect"><option value="pending" '+(u.role==='pending'?'selected':'')+'>Pending</option>'+Object.keys(ROLE_LABEL).map(function(r){return '<option value="'+r+'" '+(u.role===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>';}).join('')+'</select>'
       + (u.role==='resident' ? '<select data-profile-flat="'+u.id+'"><option value="">No flat</option>'+sortedFlats().map(function(fl){return '<option value="'+fl.id+'" '+(u.flat_id===fl.id?'selected':'')+'>'+fl.id+'</option>';}).join('')+'</select>' : '')
-      + (u.email ? '<button class="btn secondary small" data-reset-email="'+u.email+'">Send reset link</button>' : '')
+      + (u.id!==CURRENT_USER.id ? '<button class="btn secondary small" data-reset-pw="'+u.id+'" data-reset-name="'+(u.name||u.email)+'">Reset password</button>' : '')
       + (u.id!==CURRENT_USER.id ? '<button class="btn danger small" data-remove-profile="'+u.id+'">Remove</button>' : '')
       + '</div>';
   });
@@ -1369,12 +1370,19 @@ function bindMainEvents(){
       toast('Flat assigned'); await loadProfiles();
     };
   });
-  document.querySelectorAll('[data-reset-email]').forEach(function(btn){
+  document.querySelectorAll('[data-reset-pw]').forEach(function(btn){
     btn.onclick = async function(){
-      const email = btn.dataset.resetEmail;
-      if(!confirm('Email a password reset link to '+email+'?')) return;
-      const res = await sb.auth.resetPasswordForEmail(email, { redirectTo: appUrl() });
-      toast(res.error ? ('Could not send: '+res.error.message) : ('Reset link sent to '+email));
+      const name = btn.dataset.resetName;
+      const suggested = 'LPG-' + Math.floor(1000 + Math.random()*9000) + String.fromCharCode(97 + Math.floor(Math.random()*26)) + String.fromCharCode(97 + Math.floor(Math.random()*26));
+      const temp = prompt('Temporary password for '+name+' (at least 6 characters).\nThey must choose their own password at their next sign-in.', suggested);
+      if(temp === null) return;
+      if(temp.length < 6){ toast('Password must be at least 6 characters'); return; }
+      const res = await sb.rpc('admin_set_password', { target_user: btn.dataset.resetPw, new_password: temp });
+      if(res.error){
+        toast(/function|schema cache/i.test(res.error.message) ? 'Run the password-reset SQL in Supabase first' : ('Could not reset: '+res.error.message));
+        return;
+      }
+      alert('Done. Temporary password for '+name+':\n\n'+temp+'\n\nShare it with them privately (WhatsApp/call). When they sign in, the app will ask them to choose their own password.');
     };
   });
   document.querySelectorAll('[data-remove-profile]').forEach(function(btn){
