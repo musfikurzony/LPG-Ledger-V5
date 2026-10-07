@@ -105,6 +105,10 @@
   .pill.inactive{background:var(--line-soft);color:var(--ink-soft);}
   .modal-bg{position:fixed;inset:0;background:rgba(20,25,25,.7);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20;}
   .modal-bg img{max-width:100%;max-height:80vh;border-radius:10px;}
+  .bill-modal{background:var(--paper);border-radius:14px;max-width:560px;width:100%;max-height:92vh;overflow:auto;padding:16px;}
+  .bill-modal img{width:100%;max-height:none;border-radius:8px;border:1px solid var(--line);display:block;}
+  .bill-modal .rowbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+  .bill-modal .rlist{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:13px;}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:20px;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center;}
   .toast.show{opacity:1;}
   .locked{padding:40px 20px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
@@ -350,7 +354,7 @@ function flatCycles(flatId){
       previous: row.previous, current: row.current, units: row.units,
       kg: row.units * bActual.rate, rate: bActual.rate, pricePerKg: bActual.pricePerKg, bill: row.bill,
       manualBilled: manualBilled, manual: manual,
-      paid: !!row.paid, paidDate: row.paidDate || null
+      paid: !!row.paid, paidDate: row.paidDate || null, readingId: row.id
     });
   });
   cycles.sort(function(a,b){ return a.seq - b.seq; });
@@ -810,13 +814,14 @@ function renderPurchaseDetail(p){
     + '<div class="stat"><div class="v">Tk '+fmtTk(pcs.collected)+'</div><div class="l">Collected of Tk '+fmtTk(pcs.billed)+'</div></div>'
     + '</div>';
   const issuedB = computeBilling(p, DATA.readings, issuedMethod(p));
+  if(canCollect && pcs.billCount > pcs.paidCount) html += '<button class="btn small" data-remind-all="'+p.id+'" style="margin:10px 0 2px;">Send payment reminders ('+(pcs.billCount-pcs.paidCount)+' unpaid)</button>';
   html += '<div class="tablewrap"><table><thead><tr><th>Flat</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">Bill (Tk)</th><th>Status</th><th></th></tr></thead><tbody>';
   b.rows.sort(function(a,c){return naturalFlatCompare(a.flatId,c.flatId);}).forEach(function(r){
     const f = flatById(r.flatId);
     const phone = f && f.phone;
     html += '<tr><td class="flat">'+r.flatId+(f&&f.name?' <span style="color:var(--ink-soft);font-weight:400;">'+f.name+'</span>':'')+'</td>'
       + '<td class="num">'+fmtQty(r.previous)+'</td><td class="num">'+fmtQty(r.current)+'</td><td class="num">'+fmtQty(r.units)+'</td><td class="num">'+fmtTk(r.bill)+'</td>'
-      + '<td>'+(!(r.bill > 0) ? '\u2014' : r.paid ? '<span class="paytag paid">Paid'+(r.paidDate?' '+shortDate(r.paidDate):'')+'</span>' : '<span class="paytag unpaid">Unpaid</span>')+'</td>'
+      + '<td>'+(!(r.bill > 0) ? '\u2014' : r.paid ? '<span class="paytag paid">Paid'+(r.paidDate?' '+shortDate(r.paidDate):'')+'</span>' : '<span class="paytag unpaid">Unpaid</span>'+(r.lastReminded?'<div class="hint" style="font-size:10.5px;">reminded '+shortDate(r.lastReminded)+'</div>':''))+'</td>'
       + '<td class="num">';
     if(canCollect && r.bill > 0){
       if(r.paid) html += '<button class="btn small secondary" data-unpay="'+r.id+'">Undo</button> ';
@@ -826,7 +831,7 @@ function renderPurchaseDetail(p){
         if(phone) html += '<button class="btn small secondary" data-remind="'+r.id+'" data-purchase="'+p.id+'">Remind</button> ';
       }
     }
-    if(phone) html += '<button class="btn small secondary" data-wa="'+r.id+'" data-purchase="'+p.id+'">WA</button> ';
+    if(r.bill > 0) html += '<button class="btn small secondary" data-bill="'+r.id+'" data-purchase="'+p.id+'">Bill</button> ';
     if(isAdmin) html += '<button class="btn small secondary" data-edit-reading="'+r.id+'">Edit</button>';
     html += '</td></tr>';
     if(EDIT_READING_ID === r.id){
@@ -1132,11 +1137,11 @@ function viewHistory(){
     + '<div class="chart-legend">'+legend+'</div></div>';
 
   html += '<div class="card"><h2>Billing history</h2><p class="sub">Complete calculation chain for every cycle. \u201cActual Bill\u201d is the reconciliation figure; \u201cManual Bill\u201d shows what was actually issued for cycles billed at a fixed rate.</p>'
-    + '<div class="tablewrap"><table><thead><tr><th>Cycle</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">KG</th><th class="num">Rate/kg</th><th class="num">Actual Bill</th><th class="num">Manual Bill</th><th>Status</th></tr></thead><tbody>'
+    + '<div class="tablewrap"><table><thead><tr><th>Cycle</th><th class="num">Prev</th><th class="num">Curr</th><th class="num">Units</th><th class="num">KG</th><th class="num">Rate/kg</th><th class="num">Actual Bill</th><th class="num">Manual Bill</th><th>Status</th><th></th></tr></thead><tbody>'
     + cycles.slice().reverse().map(function(c){
         const idx = cycles.indexOf(c);
         const manualCell = (c.manualBilled && c.manual) ? 'Tk '+fmtTk(c.manual.bill) : '\u2014';
-        return '<tr><td>'+cycleLabel(c.period, idx)+'</td><td class="num">'+fmtQty(c.previous)+'</td><td class="num">'+fmtQty(c.current)+'</td><td class="num">'+fmtQty(c.units)+'</td><td class="num">'+fmtQty(c.kg)+'</td><td class="num">Tk '+fmtTk(c.pricePerKg)+'</td><td class="num">Tk '+fmtTk(c.bill)+'</td><td class="num">'+manualCell+'</td><td>'+(!(c.bill > 0) ? '\u2014' : c.paid?'<span class="paytag paid">Paid</span>':'<span class="paytag unpaid">Unpaid</span>')+'</td></tr>';
+        return '<tr><td>'+cycleLabel(c.period, idx)+'</td><td class="num">'+fmtQty(c.previous)+'</td><td class="num">'+fmtQty(c.current)+'</td><td class="num">'+fmtQty(c.units)+'</td><td class="num">'+fmtQty(c.kg)+'</td><td class="num">Tk '+fmtTk(c.pricePerKg)+'</td><td class="num">Tk '+fmtTk(c.bill)+'</td><td class="num">'+manualCell+'</td><td>'+(!(c.bill > 0) ? '\u2014' : c.paid?'<span class="paytag paid">Paid</span>':'<span class="paytag unpaid">Unpaid</span>')+'</td><td>'+((c.bill > 0 && c.readingId) ? '<button class="btn small secondary" data-bill="'+c.readingId+'" data-purchase="'+c.purchaseId+'">Bill</button>' : '')+'</td></tr>';
       }).join('')
     + '</tbody></table></div></div>';
 
@@ -1191,6 +1196,15 @@ function viewAdmin(){
   html += '<div class="card"><h2>Abnormal consumption alerts</h2><p class="sub">A flat\u2019s consumption is flagged on its dashboard when it swings this much versus its own average (needs at least 3 cycles of history).</p>'
     + '<label>Flag when consumption changes by more than</label><input type="number" id="thresholdInput" value="'+((DATA.settings&&DATA.settings.abnormalThresholdPct!=null)?DATA.settings.abnormalThresholdPct:25)+'" min="5" max="200" step="1"> <span class="hint">%</span>'
     + '<button class="btn small" id="saveThreshold" style="margin-top:12px;">Save</button></div>';
+
+  const bs = billSettings();
+  html += '<div class="card"><h2>Bill copy details</h2><p class="sub">Shown on every bill copy (image/PDF) and in WhatsApp bill and reminder messages.</p>'
+    + '<label>Building name</label><input id="bsName" value="'+(bs.name||'').replace(/"/g,'&quot;')+'" placeholder="e.g. Green View Tower">'
+    + '<label>Address</label><input id="bsAddress" value="'+bs.address.replace(/"/g,'&quot;')+'">'
+    + '<label>How to pay (optional)</label><input id="bsPay" value="'+(bs.payInfo||'').replace(/"/g,'&quot;')+'" placeholder="e.g. bKash 01XXXXXXXXX (Personal) or cash to the manager">'
+    + '<div class="row2"><div><label>Contact for questions (optional)</label><input id="bsContact" value="'+(bs.contact||'').replace(/"/g,'&quot;')+'" placeholder="e.g. Manager, 01XXXXXXXXX"></div>'
+    + '<div><label>Pay within (days after cycle ends, optional)</label><input type="number" min="0" step="1" id="bsDue" value="'+(bs.dueDays!=null?bs.dueDays:'')+'" placeholder="e.g. 7"></div></div>'
+    + '<button class="btn small" id="saveBillSettings" style="margin-top:12px;">Save</button></div>';
 
   html += '<div class="card"><h2>Free up photo storage</h2><p class="sub">Deletes old proof photos only \u2014 every reading, cylinder record, and bill stays exactly as it is. Photos are already shrunk automatically when captured; use this if storage space still gets tight.</p>'
     + '<label>Delete photos older than</label><select id="cleanupCutoff"><option value="3">3 months</option><option value="6" selected>6 months</option><option value="12">12 months</option></select>'
@@ -1337,8 +1351,10 @@ function bindMainEvents(){
     };
   });
   document.querySelectorAll('[data-remind]').forEach(function(b){
-    b.onclick = function(e){ e.stopPropagation(); const link = waReminderLink(b.dataset.remind, b.dataset.purchase); if(link) window.open(link,'_blank'); };
+    b.onclick = async function(e){ e.stopPropagation(); const link = waReminderLink(b.dataset.remind, b.dataset.purchase); if(link){ window.open(link,'_blank'); await recordReminder(b.dataset.remind); renderMain(); } };
   });
+  document.querySelectorAll('[data-bill]').forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); openBillModal(b.dataset.bill, b.dataset.purchase); }; });
+  document.querySelectorAll('[data-remind-all]').forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); openReminderModal(b.dataset.remindAll); }; });
   document.querySelectorAll('[data-wa]').forEach(function(b){
     b.onclick = function(e){ e.stopPropagation(); const link = waLink(b.dataset.wa, b.dataset.purchase, REPORT_METHOD[b.dataset.purchase]||'actual'); if(link) window.open(link,'_blank'); };
   });
@@ -1496,6 +1512,15 @@ function bindMainEvents(){
       toast('Access removed'); await loadProfiles();
     };
   });
+  const sbs = document.getElementById('saveBillSettings');
+  if(sbs) sbs.onclick = async function(){
+    if(!DATA.settings) DATA.settings = {};
+    const due = document.getElementById('bsDue').value;
+    DATA.settings.bill = { name: document.getElementById('bsName').value.trim(), address: document.getElementById('bsAddress').value.trim() || OFFICE_ADDRESS,
+      payInfo: document.getElementById('bsPay').value.trim(), contact: document.getElementById('bsContact').value.trim(), dueDays: due === '' ? null : parseInt(due,10) };
+    await saveStore('lpg-data', true, DATA);
+    toast('Bill copy details saved');
+  };
   const saveThresholdBtn = document.getElementById('saveThreshold');
   if(saveThresholdBtn) saveThresholdBtn.onclick = async function(){
     const v = parseFloat(document.getElementById('thresholdInput').value);
@@ -1596,20 +1621,258 @@ function waLink(readingId, purchaseId, method){
 }
 
 function waReminderLink(readingId, purchaseId){
+  const i = billInfo(readingId, purchaseId);
+  if(!i || !i.phone) return null;
+  return waUrl(i.phone, reminderText(i));
+}
+
+// ===================== Smart bill copy =====================
+function billSettings(){
+  const b = (DATA.settings && DATA.settings.bill) || {};
+  return { name: b.name || '', address: b.address || OFFICE_ADDRESS, payInfo: b.payInfo || '', contact: b.contact || '', dueDays: (b.dueDays != null && b.dueDays !== '') ? parseInt(b.dueDays,10) : null };
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function daysBetween(a, b){ return Math.round((new Date(b+'T00:00:00Z') - new Date(a+'T00:00:00Z')) / 86400000); }
+function prettyDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso+'T00:00:00Z');
+  return d.getUTCDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+' '+d.getUTCFullYear();
+}
+function billInfo(readingId, purchaseId){
   const p = DATA.purchases.find(function(x){return x.id===purchaseId;});
-  const b = computeBilling(p, DATA.readings, issuedMethod(p));
+  if(!p) return null;
+  const method = issuedMethod(p);
+  const b = computeBilling(p, DATA.readings, method);
   const row = b.rows.find(function(r){return r.id===readingId;});
   if(!row) return null;
-  const f = flatById(row.flatId);
-  const phone = ((f && f.phone) || '').replace(/[^0-9]/g,'');
-  if(!phone) return null;
+  const f = flatById(row.flatId) || { id: row.flatId };
   const period = billingPeriod(p, DATA.readings);
-  const greeting = f.name ? ('Dear '+f.name+' (Flat '+f.id+'),') : ('Dear Flat '+f.id+' User,');
-  const msg = greeting+'\nThis is a friendly reminder that your LPG bill for '+p.id
-    + (period ? ' ('+period.start+' to '+period.end+')' : '')+' is still unpaid.\n'
-    + 'Units Used: '+fmtQty(row.units)+'\nBill Amount: '+fmtTk(row.bill)+' TK.\n'
-    + 'Please pay at your earliest convenience. If you have already paid, kindly ignore this message.\nThank you!';
-  return 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
+  const set = billSettings();
+  const kg = row.units * b.rate;
+  const cycles = flatCycles(row.flatId);
+  const ci = cycles.findIndex(function(c){ return c.purchaseId === p.id; });
+  const prevC = ci > 0 ? cycles[ci-1] : null;
+  const pct = (prevC && prevC.units > 0) ? Math.round((row.units - prevC.units) / prevC.units * 100) : null;
+  const rd = DATA.readings.filter(function(r){ return r.purchaseId===p.id; }).map(function(r){ return r.dateLogged; }).filter(Boolean).sort();
+  const billDate = rd.length ? rd[rd.length-1] : (period ? period.end : todayISO());
+  const dueDate = (set.dueDays != null) ? addDaysISO(billDate, set.dueDays) : null;
+  return {
+    p: p, set: set, method: method, flatId: row.flatId, resident: f.name || '', phone: (f.phone||'').replace(/[^0-9]/g,''),
+    billNo: p.id+'-'+row.flatId, issueDate: billDate, period: period,
+    prev: row.previous, curr: row.current, units: row.units, rate: b.rate, kg: kg, pricePerKg: b.pricePerKg, amount: row.bill,
+    paid: !!row.paid, paidDate: row.paidDate || null, paidAmount: row.paidAmount != null ? row.paidAmount : row.bill,
+    prevUnits: prevC ? prevC.units : null, pct: pct,
+    dailyKg: period && period.days ? kg / period.days : null, dailyTk: period && period.days ? row.bill / period.days : null,
+    dueDate: dueDate, daysSinceEnd: Math.max(0, daysBetween(billDate, todayISO())),
+    lastReminded: row.lastReminded || null, reminderCount: row.reminderCount || 0,
+    buildingKg: b.totalKg, cylinders: cylinderTotals(p).qty
+  };
+}
+function methodLabel(i){ return i.method === 'manual' ? 'manual rate' : 'actual'; }
+function billText(i){
+  const head = '*LPG Gas Bill'+(i.set.name ? ' \u2014 '+i.set.name : '')+'*';
+  const who = 'Flat '+i.flatId+(i.resident ? ' \u2014 '+i.resident : '');
+  const per = i.period ? 'Billing period: '+prettyDate(i.period.start)+' to '+prettyDate(i.period.end)+' ('+i.period.days+' days)' : '';
+  if(i.paid){
+    return '*Payment received \u2705*'+(i.set.name ? ' \u2014 '+i.set.name : '')+'\n'+who+'\nBill no: '+i.billNo+'\n'+per
+      + '\nAmount received: *Tk '+fmtTk(i.paidAmount)+'*'+(i.paidDate ? ' on '+prettyDate(i.paidDate) : '')
+      + '\nThank you for your payment!\n'+i.set.address;
+  }
+  let t = head+'\n'+who+'\nBill no: '+i.billNo+'\n'+per
+    + '\n\nMeter: '+fmtQty(i.prev)+' \u2192 '+fmtQty(i.curr)+' = *'+fmtQty(i.units)+' units*'
+    + '\nGas used: '+fmtQty(i.units)+' \u00d7 '+i.rate.toFixed(3)+' kg/unit = '+fmtQty(i.kg)+' kg ('+(i.method==='manual'?'manual rate':'actual method')+')'
+    + '\nGas price: Tk '+fmtTk(i.pricePerKg)+' per kg'
+    + '\n\n*Amount due: Tk '+fmtTk(i.amount)+'*';
+  if(i.dailyTk != null) t += '\nThat is about Tk '+fmtTk(Math.round(i.dailyTk))+' per day.';
+  if(i.prevUnits != null && i.pct != null) t += '\nLast cycle: '+fmtQty(i.prevUnits)+' units ('+(i.pct>=0?'+':'')+i.pct+'%).';
+  if(i.dueDate) t += '\nPlease pay by *'+prettyDate(i.dueDate)+'*.';
+  if(i.set.payInfo) t += '\nPayment: '+i.set.payInfo;
+  if(i.set.contact) t += '\nQuestions: '+i.set.contact;
+  t += '\n\nThank you!\n'+i.set.address;
+  return t;
+}
+function reminderText(i){
+  let t = (i.resident ? 'Dear '+i.resident+' (Flat '+i.flatId+'),' : 'Dear Flat '+i.flatId+' resident,')
+    + '\nThis is a friendly reminder that your LPG bill *'+i.billNo+'* is still unpaid.'
+    + (i.period ? '\nBilling period: '+prettyDate(i.period.start)+' to '+prettyDate(i.period.end)+' ('+i.period.days+' days)' : '')
+    + '\nUnits used: '+fmtQty(i.units)
+    + '\n*Amount due: Tk '+fmtTk(i.amount)+'*';
+  if(i.dueDate){
+    const late = daysBetween(i.dueDate, todayISO());
+    t += late > 0 ? '\nThis was due on '+prettyDate(i.dueDate)+' ('+late+' day'+(late===1?'':'s')+' ago).' : '\nPlease pay by '+prettyDate(i.dueDate)+'.';
+  } else if(i.daysSinceEnd){
+    t += '\nThe bill was issued on '+prettyDate(i.issueDate)+' ('+i.daysSinceEnd+' day'+(i.daysSinceEnd===1?'':'s')+' ago).';
+  }
+  if(i.set.payInfo) t += '\nPayment: '+i.set.payInfo;
+  t += '\nIf you have already paid, please ignore this message. Thank you!';
+  if(i.set.name) t += '\n\u2014 '+i.set.name;
+  return t;
+}
+function waUrl(phone, text){ return phone ? 'https://wa.me/'+phone+'?text='+encodeURIComponent(text) : 'https://wa.me/?text='+encodeURIComponent(text); }
+
+// Draws the bill copy on a canvas (used for the JPEG and the PDF)
+function drawBillCanvas(i){
+  const W = 800, S = 2, pad = 40;
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  const font = function(w, size){ return w+' '+size+'px "Segoe UI", Roboto, Helvetica, Arial, sans-serif'; };
+  function wrap(text, maxW, f){
+    ctx.font = f; const words = String(text).split(' '); const lines = []; let line = '';
+    words.forEach(function(w){ const t = line ? line+' '+w : w; if(ctx.measureText(t).width > maxW && line){ lines.push(line); line = w; } else line = t; });
+    if(line) lines.push(line); return lines;
+  }
+  const rows = [
+    ['Previous reading', fmtQty(i.prev)],
+    ['Current reading', fmtQty(i.curr)],
+    ['Units used', fmtQty(i.units)+' units'],
+    ['Conversion ('+(i.method==='manual'?'manual rate':'actual, from this cycle')+')', i.rate.toFixed(3)+' kg / unit'],
+    ['Gas consumed', fmtQty(i.kg)+' kg'],
+    ['Gas price (average this cycle)', 'Tk '+fmtTk(i.pricePerKg)+' / kg']
+  ];
+  if(i.dailyKg != null) rows.push(['Daily average', fmtQty(Math.round(i.dailyKg*100)/100)+' kg \u00b7 Tk '+fmtTk(Math.round(i.dailyTk))+' per day']);
+  if(i.prevUnits != null) rows.push(['Last cycle', fmtQty(i.prevUnits)+' units'+(i.pct!=null?' ('+(i.pct>=0?'+':'')+i.pct+'%)':'')]);
+  const ctxMeasure = document.createElement('canvas').getContext('2d');
+  const payLines = (i.set.payInfo && !i.paid) ? (function(){ ctx.font = font('400',15); return wrap('Payment: '+i.set.payInfo, W-2*pad-24, font('400',15)); })() : [];
+  const H = 128 + 174 + rows.length*38 + 30 + 110 + (i.dueDate && !i.paid ? 24 : 0) + payLines.length*22 + (i.set.contact ? 22 : 0) + 90;
+  c.width = W*S; c.height = H*S; ctx.scale(S,S);
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0,0,W,H);
+  // Header band
+  ctx.fillStyle = '#1B2A2E'; ctx.fillRect(0,0,W,118);
+  ctx.fillStyle = '#FFFFFF'; ctx.font = font('700',26); ctx.textBaseline = 'alphabetic';
+  ctx.fillText(i.set.name || 'LPG Gas Bill', pad, 50);
+  ctx.font = font('400',14); ctx.fillStyle = '#C9D3D2';
+  wrap(i.set.address, W-2*pad-200, font('400',14)).slice(0,2).forEach(function(l, k){ ctx.fillText(l, pad, 76 + k*19); });
+  ctx.textAlign = 'right'; ctx.fillStyle = '#F2A65A'; ctx.font = font('700',15);
+  ctx.fillText('LPG GAS BILL', W-pad, 46);
+  ctx.fillStyle = '#C9D3D2'; ctx.font = font('400',13);
+  ctx.fillText('Bill no: '+i.billNo, W-pad, 68); ctx.fillText('Issued: '+prettyDate(i.issueDate), W-pad, 88);
+  ctx.textAlign = 'left';
+  // Bill-to + status stamp
+  let y = 160;
+  ctx.fillStyle = '#6B7778'; ctx.font = font('600',12); ctx.fillText('BILL TO', pad, y);
+  ctx.fillStyle = '#1B2A2E'; ctx.font = font('700',22); ctx.fillText('Flat '+i.flatId, pad, y+28);
+  if(i.resident){ ctx.font = font('400',16); ctx.fillStyle = '#4B5A5D'; ctx.fillText(i.resident, pad, y+52); }
+  const stamp = i.paid ? 'PAID' : 'DUE';
+  ctx.save(); ctx.translate(W-pad-90, y+18); ctx.rotate(-0.08);
+  ctx.strokeStyle = i.paid ? '#0F6E56' : '#A32D2D'; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 3;
+  ctx.strokeRect(-80,-26,160,54); ctx.font = font('800',30); ctx.textAlign = 'center'; ctx.fillText(stamp, 0, 12);
+  ctx.restore();
+  if(i.paid && i.paidDate){ ctx.textAlign = 'right'; ctx.fillStyle = '#0F6E56'; ctx.font = font('600',13); ctx.fillText('on '+prettyDate(i.paidDate), W-pad-10, y+64); ctx.textAlign = 'left'; }
+  y += 86;
+  ctx.fillStyle = '#6B7778'; ctx.font = font('600',12); ctx.fillText('BILLING PERIOD', pad, y);
+  ctx.fillStyle = '#1B2A2E'; ctx.font = font('600',16);
+  ctx.fillText(i.period ? prettyDate(i.period.start)+'  \u2192  '+prettyDate(i.period.end)+'   \u00b7   '+i.period.days+' days of use' : '\u2014', pad, y+24);
+  y += 72;
+  // Calculation rows
+  rows.forEach(function(r, k){
+    if(k % 2 === 0){ ctx.fillStyle = '#F4F6F5'; ctx.fillRect(pad, y-24, W-2*pad, 38); }
+    ctx.fillStyle = '#4B5A5D'; ctx.font = font('400',15); ctx.fillText(r[0], pad+12, y);
+    ctx.fillStyle = '#1B2A2E'; ctx.font = font('600',15); ctx.textAlign = 'right'; ctx.fillText(r[1], W-pad-12, y); ctx.textAlign = 'left';
+    y += 38;
+  });
+  y += 10;
+  // Total box
+  ctx.fillStyle = i.paid ? '#E1F5EE' : '#FBEAEA'; ctx.fillRect(pad, y, W-2*pad, 84);
+  ctx.fillStyle = i.paid ? '#0F6E56' : '#A32D2D'; ctx.font = font('600',15);
+  ctx.fillText(i.paid ? 'AMOUNT PAID' : 'AMOUNT DUE', pad+18, y+34);
+  ctx.font = font('800',34); ctx.textAlign = 'right'; ctx.fillText('Tk '+fmtTk(i.paid ? i.paidAmount : i.amount), W-pad-18, y+56); ctx.textAlign = 'left';
+  ctx.fillStyle = '#4B5A5D'; ctx.font = font('400',13);
+  ctx.fillText(fmtQty(i.units)+' units \u00d7 '+i.rate.toFixed(3)+' kg/unit \u00d7 Tk '+fmtTk(i.pricePerKg)+'/kg', pad+18, y+62);
+  y += 110;
+  ctx.fillStyle = '#1B2A2E'; ctx.font = font('400',15);
+  if(i.dueDate && !i.paid){ ctx.font = font('600',15); ctx.fillText('Please pay by '+prettyDate(i.dueDate), pad, y); y += 24; ctx.font = font('400',15); }
+  if(i.paid){ ctx.font = font('600',15); ctx.fillStyle = '#0F6E56'; ctx.fillText('Thank you for your payment.', pad, y); y += 22; ctx.font = font('400',15); ctx.fillStyle = '#1B2A2E'; }
+  payLines.forEach(function(l){ ctx.fillText(l, pad, y); y += 22; });
+  if(i.set.contact){ ctx.fillText('Questions: '+i.set.contact, pad, y); y += 22; }
+  // Footer
+  ctx.strokeStyle = '#E2E6E4'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, H-58); ctx.lineTo(W-pad, H-58); ctx.stroke();
+  ctx.fillStyle = '#8A9596'; ctx.font = font('400',12);
+  ctx.fillText('Cycle '+i.p.id+': building used '+fmtQty(i.buildingKg)+' kg from '+i.cylinders+' cylinder(s). Bills are shared by each flat\u2019s metered use.', pad, H-36);
+  ctx.fillText('Generated by LPG Ledger \u00b7 '+prettyDate(todayISO()), pad, H-18);
+  return c;
+}
+function billFileBase(i){ return 'LPG_Bill_'+i.flatId+'_'+i.p.id+'_'+(i.paid?'Paid':'Due'); }
+function canvasToBlob(c){ return new Promise(function(res){ c.toBlob(function(b){ res(b); }, 'image/jpeg', 0.92); }); }
+function downloadBlob(blob, name){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function billPdfBlob(i, canvas){
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  if(!jsPDFCtor) return null;
+  const doc = new jsPDFCtor({ unit:'pt', format:'a4' });
+  const pw = doc.internal.pageSize.getWidth(), m = 40, w = pw - 2*m, h = w * canvas.height / canvas.width;
+  doc.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', m, m, w, h);
+  return doc.output('blob');
+}
+function closeModal(){ const m = document.getElementById('appModal'); if(m) m.remove(); }
+function openModal(innerHtml){
+  closeModal();
+  const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.id = 'appModal';
+  bg.innerHTML = '<div class="bill-modal">'+innerHtml+'</div>';
+  bg.onclick = function(e){ if(e.target === bg) closeModal(); };
+  document.body.appendChild(bg);
+  return bg;
+}
+function openBillModal(readingId, purchaseId){
+  const i = billInfo(readingId, purchaseId);
+  if(!i) return;
+  const canvas = drawBillCanvas(i);
+  const canShareFiles = !!(navigator.canShare && navigator.share);
+  const m = openModal(
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><b>Bill copy \u2014 Flat '+i.flatId+' ('+(i.paid?'Paid':'Due')+')</b><button class="btn secondary small" id="bmClose">Close</button></div>'
+    + '<img src="'+canvas.toDataURL('image/jpeg', 0.9)+'" alt="Bill copy">'
+    + '<div class="rowbtns">'
+    + (canShareFiles ? '<button class="btn small" id="bmShare">Share image (WhatsApp\u2026)</button>' : '')
+    + '<button class="btn small secondary" id="bmJpg">Download JPEG</button>'
+    + '<button class="btn small secondary" id="bmPdf">Download PDF</button>'
+    + '<button class="btn small secondary" id="bmText">'+(i.phone ? 'Send as text (WhatsApp)' : 'Send as text')+'</button>'
+    + '</div>'
+    + (i.phone ? '' : '<div class="hint" style="margin-top:8px;">No phone number saved for this flat \u2014 add one in Admin \u2192 Flats & residents to message them directly.</div>')
+  );
+  m.querySelector('#bmClose').onclick = closeModal;
+  m.querySelector('#bmJpg').onclick = async function(){ downloadBlob(await canvasToBlob(canvas), billFileBase(i)+'.jpg'); };
+  m.querySelector('#bmPdf').onclick = function(){ const b = billPdfBlob(i, canvas); if(!b){ toast('PDF library failed to load \u2014 try JPEG'); return; } downloadBlob(b, billFileBase(i)+'.pdf'); };
+  m.querySelector('#bmText').onclick = function(){ window.open(waUrl(i.phone, billText(i)), '_blank'); };
+  const sh = m.querySelector('#bmShare');
+  if(sh) sh.onclick = async function(){
+    try{
+      const file = new File([await canvasToBlob(canvas)], billFileBase(i)+'.jpg', { type:'image/jpeg' });
+      if(navigator.canShare({ files:[file] })) await navigator.share({ files:[file], title:'LPG bill \u2014 Flat '+i.flatId, text: i.paid ? 'Payment receipt \u2014 Flat '+i.flatId : 'LPG bill \u2014 Flat '+i.flatId+', Tk '+fmtTk(i.amount)+' due' });
+      else downloadBlob(await canvasToBlob(canvas), billFileBase(i)+'.jpg');
+    }catch(err){ if(err && err.name !== 'AbortError') toast('Sharing not available \u2014 use Download instead'); }
+  };
+}
+async function recordReminder(readingId){
+  const r = DATA.readings.find(function(x){return x.id===readingId;});
+  if(!r) return;
+  r.lastReminded = todayISO(); r.reminderCount = (r.reminderCount||0) + 1;
+  await saveStore('lpg-data', true, DATA);
+}
+function openReminderModal(purchaseId){
+  const p = DATA.purchases.find(function(x){return x.id===purchaseId;});
+  const b = computeBilling(p, DATA.readings, issuedMethod(p));
+  const unpaid = b.rows.filter(function(r){ return r.bill > 0 && !r.paid; }).sort(function(a,c){ return naturalFlatCompare(a.flatId, c.flatId); });
+  const total = unpaid.reduce(function(s,r){ return s + r.bill; }, 0);
+  const m = openModal(
+    '<div style="display:flex;justify-content:space-between;align-items:center;"><b>Payment reminders \u2014 '+p.id+'</b><button class="btn secondary small" id="rmClose">Close</button></div>'
+    + '<p class="hint" style="margin:6px 0 4px;">'+unpaid.length+' unpaid bill(s) \u00b7 Tk '+fmtTk(total)+' outstanding. Tap Send for each flat \u2014 WhatsApp opens with a ready message; come back here for the next one.</p>'
+    + (unpaid.length ? unpaid.map(function(r){
+        const f = flatById(r.flatId) || {};
+        const ph = (f.phone||'').replace(/[^0-9]/g,'');
+        return '<div class="rlist"><div><b>'+r.flatId+'</b>'+(f.name?' \u2014 '+f.name:'')+'<div class="hint">Tk '+fmtTk(r.bill)+(r.lastReminded?' \u00b7 last reminded '+shortDate(r.lastReminded)+(r.reminderCount>1?' ('+r.reminderCount+'\u00d7)':''):'')+'</div></div>'
+          + (ph ? '<button class="btn small" data-rm-send="'+r.id+'">Send</button>' : '<span class="hint">no phone</span>')+'</div>';
+      }).join('') : '<div class="empty">Everyone has paid \u2014 nothing to remind.</div>')
+  );
+  m.querySelector('#rmClose').onclick = function(){ closeModal(); renderMain(); };
+  m.querySelectorAll('[data-rm-send]').forEach(function(btn){
+    btn.onclick = async function(){
+      const i = billInfo(btn.dataset.rmSend, purchaseId);
+      window.open(waUrl(i.phone, reminderText(i)), '_blank');
+      await recordReminder(btn.dataset.rmSend);
+      btn.textContent = 'Sent \u2713'; btn.className = 'btn small secondary';
+    };
+  });
 }
 
 const OFFICE_ADDRESS = 'House 147, Road 2, Block A, Pallabi, Mirpur 12, Dhaka';
@@ -1623,7 +1886,7 @@ function addAddressFooter(doc){
     doc.setFont('helvetica','normal');
     doc.setFontSize(8);
     doc.setTextColor(150,150,150);
-    doc.text(OFFICE_ADDRESS, pageWidth-40, pageHeight-24, { align: 'right' });
+    doc.text((DATA && DATA.settings && DATA.settings.bill && DATA.settings.bill.address) || OFFICE_ADDRESS, pageWidth-40, pageHeight-24, { align: 'right' });
   }
 }
 
