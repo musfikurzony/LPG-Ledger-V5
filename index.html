@@ -242,6 +242,7 @@ let GRAPH_RANGE = '6'; // 6 | 12 | all
 
 let AUTH_STATUS = 'checking'; // checking | nobackend | signedout | pending | ready
 let AUTH_MODE = 'login'; // login | signup | forgot
+let READING_MODE = 'single'; // single | bulk
 let PW_MODE = null; // null | 'recovery' (email link) | 'change' (signed-in user) | 'forced' (admin set a temporary password)
 function appUrl(){ return window.location.origin + window.location.pathname; }
 let PROFILES = [];
@@ -908,6 +909,43 @@ function viewPurchaseForm(){
   return html;
 }
 
+// Latest reading for a flat from any OTHER batch (so the sheet shows last cycle's closing reading)
+function prevReadingFor(flatId, excludeBatchId){
+  const last = DATA.readings.filter(function(r){ return r.flatId===flatId && r.purchaseId!==excludeBatchId; })
+    .sort(function(a,b){ return b.dateLogged.localeCompare(a.dateLogged); })[0];
+  return last ? last.current : 0;
+}
+function readingInBatch(flatId, batchId){
+  return DATA.readings.find(function(r){ return r.flatId===flatId && r.purchaseId===batchId; });
+}
+function downloadReadingSheet(batchId){
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  if(!jsPDFCtor){ toast('PDF library failed to load \u2014 check your connection and try again'); return; }
+  const doc = new jsPDFCtor({ unit:'pt', format:'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth(), margin = 36;
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(27,42,46);
+  doc.text('LPG Meter Reading Sheet \u2014 '+batchId, margin, 46);
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
+  doc.text('Reading date: ____________________     Read by: ____________________     Signature: ________________', margin, 68);
+  doc.setFontSize(8.5); doc.setTextColor(110,110,110);
+  doc.text('"Previous" is the last recorded reading. Write the number shown on each meter in "Current reading". Use Remarks for meter issues or locked flats.', margin, 84);
+  const rows = sortedFlats().filter(function(f){ return f.active; }).map(function(f, i){
+    const done = readingInBatch(f.id, batchId);
+    return [String(i+1), f.id, f.name || '', fmtQty(prevReadingFor(f.id, batchId)), '', done ? 'Already entered: '+fmtQty(done.current) : ''];
+  });
+  doc.autoTable({
+    startY: 94, margin: { left: margin, right: margin },
+    head: [['#','Flat','Resident','Previous reading','Current reading','Remarks']],
+    body: rows,
+    styles: { font:'helvetica', fontSize:10, textColor:[27,42,46], minCellHeight:18.5, cellPadding:{top:2,bottom:2,left:4,right:4}, valign:'middle', lineColor:[180,180,180], lineWidth:0.5 },
+    headStyles: { fillColor:[27,42,46], textColor:255, fontSize:9, minCellHeight:16 },
+    theme: 'grid',
+    columnStyles: { 0:{cellWidth:24, halign:'right'}, 1:{cellWidth:38}, 2:{cellWidth:110}, 3:{cellWidth:92, halign:'right'}, 4:{cellWidth:115}, 5:{cellWidth:'auto', fontSize:8} }
+  });
+  addAddressFooter(doc);
+  doc.save('LPG_Reading_Sheet_'+batchId+'.pdf');
+}
+
 function viewReadingForm(){
   if(!can('addReading')) return '<div class="card"><div class="locked">Only the meter reader or admin can log meter readings.</div></div>';
   const openPurchases = DATA.purchases.filter(function(p){return p.status==='open';});
@@ -924,6 +962,28 @@ function viewReadingForm(){
     html += '<label>Switch active batch</label><select id="batchSwitchSelect">'
       + openPurchases.map(function(p){return '<option value="'+p.id+'" '+(p.id===ACTIVE_BATCH_ID?'selected':'')+'>'+p.id+'</option>';}).join('')
       + '</select>';
+  }
+  const doneCount = activeFlats.filter(function(f){ return readingInBatch(f.id, activeBatch.id); }).length;
+  html += '<div class="hint" style="margin-top:10px;">'+doneCount+' of '+activeFlats.length+' active flats entered for this batch.</div>';
+  html += '<div class="rowbtns" style="margin-top:10px;flex-wrap:wrap;">'
+    + '<button class="btn secondary small" id="sheetBtn">Print blank reading sheet (A4 PDF)</button>'
+    + '<button class="btn secondary small" id="modeBtn">'+(READING_MODE==='bulk'?'Back to one-by-one entry':'Enter all readings from paper')+'</button>'
+    + '</div>';
+  if(READING_MODE === 'bulk'){
+    html += '<h2 style="margin-top:14px;">Enter all readings</h2><p class="sub">Type the current reading for each flat from the paper sheet. Press Enter or Tab to jump to the next flat. Leave a box empty to skip that flat. Flats already entered for this batch are not shown.</p>';
+    const pending = activeFlats.filter(function(f){ return !readingInBatch(f.id, activeBatch.id); });
+    if(pending.length === 0) return html + '<div class="empty">All active flats already have a reading for '+activeBatch.id+'.</div></div>';
+    html += '<div class="tablewrap"><table><thead><tr><th>Flat</th><th class="num">Previous</th><th class="num">Current</th><th class="num">Units</th></tr></thead><tbody>'
+      + pending.map(function(f, i){
+          const prev = prevReadingFor(f.id, activeBatch.id);
+          return '<tr><td class="flat">'+f.id+(f.name?' <span style="color:var(--ink-soft);font-weight:400;">'+f.name+'</span>':'')+'</td>'
+            + '<td class="num"><input type="number" step="0.01" class="bulkPrev" data-flat="'+f.id+'" value="'+prev+'" tabindex="-1" style="width:90px;text-align:right;"></td>'
+            + '<td class="num"><input type="number" step="0.01" class="bulkCurr" data-flat="'+f.id+'" data-idx="'+i+'" style="width:100px;text-align:right;"></td>'
+            + '<td class="num bulkUnits" data-flat="'+f.id+'">\u2014</td></tr>';
+        }).join('')
+      + '</tbody></table></div>'
+      + '<button class="btn" id="bulkSave" style="margin-top:12px;">Save all entered readings</button>';
+    return html + '</div>';
   }
   html += '<h2 style="margin-top:14px;">Log a meter reading</h2><p class="sub">The batch is fixed above \u2014 pick the flat, enter the reading, submit, repeat. No per-entry batch picking.</p>'
     + '<form id="readingForm">'
@@ -1318,6 +1378,49 @@ function bindMainEvents(){
   if(switchLink) switchLink.onclick = function(){ SHOW_BATCH_SWITCH = !SHOW_BATCH_SWITCH; renderMain(); };
   const bss = document.getElementById('batchSwitchSelect');
   if(bss) bss.onchange = function(){ ACTIVE_BATCH_ID = bss.value; SHOW_BATCH_SWITCH=false; renderMain(); };
+
+  const sheetBtn = document.getElementById('sheetBtn');
+  if(sheetBtn) sheetBtn.onclick = function(){ downloadReadingSheet(ACTIVE_BATCH_ID); };
+  const modeBtn = document.getElementById('modeBtn');
+  if(modeBtn) modeBtn.onclick = function(){ READING_MODE = READING_MODE==='bulk' ? 'single' : 'bulk'; renderMain(); };
+  function bulkRowUpdate(flatId){
+    const prev = document.querySelector('.bulkPrev[data-flat="'+flatId+'"]'), curr = document.querySelector('.bulkCurr[data-flat="'+flatId+'"]'), cell = document.querySelector('.bulkUnits[data-flat="'+flatId+'"]');
+    if(!prev || !curr || !cell) return;
+    if(curr.value === ''){ cell.textContent = '\u2014'; cell.style.color = ''; return; }
+    const u = Math.round((parseFloat(curr.value) - parseFloat(prev.value||0))*100)/100;
+    cell.textContent = fmtQty(u); cell.style.color = u < 0 ? 'var(--red)' : '';
+  }
+  document.querySelectorAll('.bulkPrev,.bulkCurr').forEach(function(inp){ inp.oninput = function(){ bulkRowUpdate(inp.dataset.flat); }; });
+  document.querySelectorAll('.bulkCurr').forEach(function(inp){
+    inp.onkeydown = function(e){
+      if(e.key === 'Enter'){ e.preventDefault(); const next = document.querySelector('.bulkCurr[data-idx="'+(parseInt(inp.dataset.idx,10)+1)+'"]'); if(next) next.focus(); else document.getElementById('bulkSave').focus(); }
+    };
+  });
+  const bulkSave = document.getElementById('bulkSave');
+  if(bulkSave) bulkSave.onclick = async function(){
+    const entries = [];
+    let negatives = [];
+    document.querySelectorAll('.bulkCurr').forEach(function(inp){
+      if(inp.value === '') return;
+      const prevEl = document.querySelector('.bulkPrev[data-flat="'+inp.dataset.flat+'"]');
+      const prev = parseFloat(prevEl.value||0), curr = parseFloat(inp.value);
+      if(curr < prev) negatives.push(inp.dataset.flat);
+      entries.push({ flatId: inp.dataset.flat, previous: prev, current: curr });
+    });
+    if(entries.length === 0){ toast('Type at least one current reading first'); return; }
+    if(negatives.length && !confirm('Current is lower than previous for: '+negatives.join(', ')+'.\nSave anyway?')) return;
+    if(!confirm('Save '+entries.length+' reading(s) to batch '+ACTIVE_BATCH_ID+'?')) return;
+    const today = new Date().toISOString().slice(0,10);
+    entries.forEach(function(en){
+      if(readingInBatch(en.flatId, ACTIVE_BATCH_ID)) return;
+      DATA.readings.push({ id: uid('R'), purchaseId: ACTIVE_BATCH_ID, flatId: en.flatId, previous: en.previous, current: en.current, dateLogged: today, loggedBy: CURRENT_USER.name, hasPhoto: false });
+    });
+    await saveStore('lpg-data', true, DATA);
+    toast(entries.length+' reading(s) saved');
+    renderMain();
+  };
+  const firstBulk = document.querySelector('.bulkCurr[data-idx="0"]');
+  if(firstBulk && READING_MODE === 'bulk' && TAB === 'reading') firstBulk.focus();
 
   const rf = document.getElementById('readingForm');
   if(rf) rf.onsubmit = async function(e){
